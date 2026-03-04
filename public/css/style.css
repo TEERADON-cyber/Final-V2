@@ -73,31 +73,6 @@ body {
   overflow-x: hidden;
 }
 
-/* Animated Background Pattern */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  background-image:
-    repeating-linear-gradient(
-      90deg,
-      rgba(15, 23, 42, 0.03) 0,
-      rgba(15, 23, 42, 0.03) 1px,
-      transparent 1px,
-      transparent 72px
-    ),
-    repeating-linear-gradient(
-      0deg,
-      rgba(15, 23, 42, 0.02) 0,
-      rgba(15, 23, 42, 0.02) 1px,
-      transparent 1px,
-      transparent 72px
-    );
-  opacity: 0.55;
-  pointer-events: none;
-  z-index: 1;
-}
-
 /* App Shell Layout (sidebar) */
 .app-shell {
   display: flex;
@@ -1033,7 +1008,24 @@ table td form {
   color: var(--text-dark);
 }
 
+.field-inline input {
+  min-width: 210px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: 0.9rem;
+  background: var(--surface-white);
+  color: var(--text-dark);
+}
+
 .field-inline select:focus {
+  outline: none;
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.field-inline input:focus {
   outline: none;
   border-color: var(--primary-500);
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
@@ -1059,6 +1051,16 @@ table td form {
 
 .table-row-form .field-inline select {
   min-width: 160px;
+}
+
+.deliveries-table th:last-child,
+.deliveries-table td:last-child {
+  min-width: 250px;
+}
+
+.deliveries-table .table-row-actions,
+.deliveries-table .table-row-form {
+  min-width: 220px;
 }
 
 /* Overview Page Alignment (light theme) */

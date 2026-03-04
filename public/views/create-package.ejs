@@ -12,7 +12,7 @@
 
 <section class="card page-head">
   <h2>Create Package</h2>
-  <p><%= manualPackageConfig ? "Assign a delivery service package to a user." : "Create a package request with receiver and address details. Tracking number and service are assigned automatically." %></p>
+  <p><%= manualPackageConfig ? "Assign a delivery service package to a user." : "Create a package request with receiver and address details. Select a delivery service level before submission." %></p>
 </section>
 
 <section class="card">
@@ -25,7 +25,7 @@
       <% if (manualPackageConfig) { %>
         You need at least one user and one delivery service before creating a package.
       <% } else { %>
-        A default delivery service is required before creating a package.
+        At least one delivery service is required before creating a package.
       <% } %>
     </div>
   <% } else { %>
@@ -49,16 +49,34 @@
               </select>
             </div>
 
-            <div class="field">
-              <label for="service_id">Delivery Service</label>
-              <select id="service_id" name="service_id" required>
-                <% serviceList.forEach((u) => { %>
-                  <option value="<%= u.service_id %>" <%= String(fieldValues.service_id || '') === String(u.service_id) ? 'selected' : '' %>><%= u.service_name || ("Delivery Service " + u.service_id) %></option>
-                <% }) %>
-              </select>
-            </div>
           </div>
         </section>
+      <% } %>
+
+      <section class="form-section">
+        <h3>Service Selection</h3>
+        <div class="form-row">
+          <div class="field">
+            <label for="service_id">Delivery Service</label>
+            <select id="service_id" name="service_id" required>
+              <% serviceList.forEach((u) => { %>
+                <% const serviceAdditionalCharge = Number.parseFloat(u.additional_charge); %>
+                <% const normalizedAdditionalCharge = Number.isFinite(serviceAdditionalCharge) && serviceAdditionalCharge > 0 ? serviceAdditionalCharge : 0; %>
+                <option
+                  value="<%= u.service_id %>"
+                  data-price-rate="<%= Number.isFinite(Number.parseFloat(u.price_rate)) && Number.parseFloat(u.price_rate) > 0 ? Number.parseFloat(u.price_rate) : 0 %>"
+                  data-additional-charge="<%= normalizedAdditionalCharge %>"
+                  <%= String(fieldValues.service_id || '') === String(u.service_id) ? 'selected' : '' %>
+                >
+                  <%= u.service_name || ("Delivery Service " + u.service_id) %><%= normalizedAdditionalCharge > 0 ? " (+" + normalizedAdditionalCharge.toFixed(2) + " THB)" : "" %>
+                </option>
+              <% }) %>
+            </select>
+          </div>
+        </div>
+        </section>
+      <% if (!manualPackageConfig) { %>
+        <p class="muted">Service rates are managed from Delivery Services and applied to your shipment automatically.</p>
       <% } %>
 
       <section class="form-section">
@@ -186,6 +204,7 @@
         var phoneInput = document.getElementById("receiver_phone");
         var postalInput = document.getElementById("postal_code");
         var weightInput = document.getElementById("weight");
+        var serviceInput = document.getElementById("service_id");
         var shippingEstimate = document.getElementById("shipping-fee-estimate");
         var houseInput = document.getElementById("house_number");
         var villageInput = document.getElementById("village_no");
@@ -229,6 +248,28 @@
             shippingEstimate.textContent = "Estimated shipping fee: -";
             return;
           }
+          var selectedServiceCharge = 0;
+          if (serviceInput && serviceInput.selectedIndex >= 0) {
+            var selectedOption = serviceInput.options[serviceInput.selectedIndex];
+            var selectedRate = Number.parseFloat(
+              selectedOption ? selectedOption.getAttribute("data-price-rate") : ""
+            );
+            var chargeFromOption = Number.parseFloat(
+              selectedOption ? selectedOption.getAttribute("data-additional-charge") : ""
+            );
+            var perKgRate = Number.isFinite(selectedRate) && selectedRate > 0
+              ? Math.round(selectedRate * 100) / 100
+              : SHIPPING_PER_KG;
+            if (Number.isFinite(chargeFromOption) && chargeFromOption >= 0) {
+              selectedServiceCharge = Math.round(chargeFromOption * 100) / 100;
+            }
+            var shippingAmount = Math.round(
+              (SHIPPING_BASE_FEE + (perKgRate * weight) + selectedServiceCharge) * 100
+            ) / 100;
+            shippingEstimate.textContent = "Estimated shipping fee: " + thbFormatter.format(shippingAmount);
+            return;
+          }
+
           var shippingAmount = Math.round((SHIPPING_BASE_FEE + (SHIPPING_PER_KG * weight)) * 100) / 100;
           shippingEstimate.textContent = "Estimated shipping fee: " + thbFormatter.format(shippingAmount);
         }
@@ -295,6 +336,9 @@
             weightInput.setCustomValidity(isValid ? "" : "Weight must be between 0.1 and 125 kg.");
             updateShippingEstimate();
           });
+        }
+        if (serviceInput) {
+          serviceInput.addEventListener("change", updateShippingEstimate);
         }
 
         [houseInput, villageInput, soiInput, roadInput, subdistrictInput, districtInput, provinceInput].forEach(function (input) {

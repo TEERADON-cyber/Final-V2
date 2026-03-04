@@ -52,8 +52,16 @@ const defaultCustomerDeliveryDueDays = Number.isFinite(defaultCustomerDeliveryDu
   : 7;
 const shippingBaseFeeInput = Number.parseFloat(process.env.SHIPPING_BASE_FEE || "30");
 const shippingPerKgInput = Number.parseFloat(process.env.SHIPPING_PER_KG || "20");
+const expressDeliveryAdditionalChargeInput = Number.parseFloat(
+  process.env.EXPRESS_DELIVERY_ADDITIONAL_CHARGE || "40"
+);
 const shippingBaseFee = Number.isFinite(shippingBaseFeeInput) ? shippingBaseFeeInput : 30;
 const shippingPerKg = Number.isFinite(shippingPerKgInput) ? shippingPerKgInput : 20;
+const expressDeliveryAdditionalCharge = Number.isFinite(expressDeliveryAdditionalChargeInput)
+  && expressDeliveryAdditionalChargeInput > 0
+  ? Math.round(expressDeliveryAdditionalChargeInput * 100) / 100
+  : 40;
+const standardDeliveryServiceName = "standard delivery";
 const minPackageWeight = 0.1;
 const maxPackageWeight = 125;
 
@@ -145,6 +153,16 @@ function calculateShippingAmountByWeight(weight) {
 // [PACKAGE] Pick default delivery service id from a service list.
 function getDefaultServiceId(services) {
   const list = Array.isArray(services) ? services : [];
+  const standardService = list.find((service) => {
+    return String(service && service.service_name ? service.service_name : "")
+      .toLowerCase()
+      .trim() === standardDeliveryServiceName;
+  });
+  const standardId = Number.parseInt(standardService && standardService.service_id, 10);
+  if (Number.isFinite(standardId) && standardId > 0) {
+    return standardId;
+  }
+
   const ids = list
     .map((service) => Number.parseInt(service && service.service_id, 10))
     .filter((id) => Number.isFinite(id) && id > 0);
@@ -175,6 +193,68 @@ function buildCustomerAutoDeliveryPayload(packageId, packageWeight) {
     payment_method: "online_bank",
     order_status: "processing"
   };
+}
+
+// [DELIVERY] Normalize delivery rows and attach package/payment derived fields.
+function enrichDeliveriesWithPaymentState(deliveries, packages, payments) {
+  const deliveryList = Array.isArray(deliveries) ? deliveries : [];
+  const packageList = Array.isArray(packages) ? packages : [];
+  const paymentList = Array.isArray(payments) ? payments : [];
+
+  const packageById = new Map(
+    packageList.map((pack) => [String(pack.package_id), pack])
+  );
+  const paymentByDeliveryId = new Map(
+    paymentList.map((payment) => [String(payment.delivery_id), payment])
+  );
+
+  return deliveryList.map((delivery) => {
+    const pack = packageById.get(String(delivery.package_id)) || null;
+    const payment = paymentByDeliveryId.get(String(delivery.delivery_id)) || null;
+    const method = normalizePaymentMethod(
+      (payment && payment.payment_method) || delivery.payment_method
+    ) || "online_bank";
+    const packageStatus = String(pack && pack.package_status ? pack.package_status : "active")
+      .toLowerCase()
+      .trim() || "active";
+    const orderStatus = packageStatus === "cancelled"
+      ? "cancelled"
+      : (normalizeOrderStatus(delivery.order_status) || "processing");
+    const deliveryStatus = String(delivery.status || "").toLowerCase().trim();
+    const rawPaymentStatus = String(payment && payment.payment_status ? payment.payment_status : "")
+      .toLowerCase()
+      .trim();
+    let effectivePaymentStatus = rawPaymentStatus;
+
+    if (!effectivePaymentStatus) {
+      if (method === "cod" && orderStatus !== "delivered") {
+        effectivePaymentStatus = "pending";
+      } else {
+        effectivePaymentStatus = deliveryStatus === "paid" ? "paid" : "unpaid";
+      }
+    }
+    if (method === "cod" && orderStatus !== "delivered" && effectivePaymentStatus !== "paid") {
+      effectivePaymentStatus = "pending";
+    }
+    if (packageStatus === "cancelled") {
+      effectivePaymentStatus = "cancelled";
+    }
+    if (effectivePaymentStatus === "pending_payment") {
+      effectivePaymentStatus = "unpaid";
+    }
+
+    return {
+      ...delivery,
+      tracking_number: pack ? (pack.tracking_number || pack.package_reading || null) : null,
+      receiver_name: pack ? (pack.receiver_name || null) : null,
+      package_status: packageStatus,
+      order_status: orderStatus,
+      order_status_label: formatOrderStatus(orderStatus),
+      payment_method: method,
+      payment_status: effectivePaymentStatus,
+      payment_status_label: formatPaymentStatus(effectivePaymentStatus)
+    };
+  });
 }
 
 // [FORMAT] Convert numeric values into THB currency format.
@@ -531,6 +611,7 @@ app.use((req, res, next) => {
     value: status,
     label: orderStatusLabels[status]
   }));
+  res.locals.expressDeliveryAdditionalCharge = expressDeliveryAdditionalCharge;
   next();
 });
 
@@ -737,17 +818,21 @@ app.get('/', async (req, res) => {
     const myDeliveries = allDeliveries.filter((d) => packageIds.has(String(d.package_id)));
     const deliveryIds = new Set(myDeliveries.map((d) => String(d.delivery_id)));
     const myPayments = allPayments.filter((p) => deliveryIds.has(String(p.delivery_id)));
+    const deliveries = enrichDeliveriesWithPaymentState(myDeliveries, myPackages, myPayments);
 
-    const openDeliveries = myDeliveries.filter((d) => {
-      const status = String(d.status || "").toLowerCase();
-      return status === "unpaid" || status === "overdue";
+    const openDeliveries = deliveries.filter((d) => {
+      const paymentStatus = String(d.payment_status || "").toLowerCase().trim();
+      const deliveryStatus = String(d.status || "").toLowerCase().trim();
+      return paymentStatus === "unpaid"
+        || paymentStatus === "pending_payment"
+        || deliveryStatus === "overdue";
     });
     const dueAmount = openDeliveries.reduce((sum, delivery) => {
       const amount = Number.parseFloat(delivery.amount);
       return sum + (Number.isFinite(amount) ? amount : 0);
     }, 0);
 
-    const recentDeliveries = [...myDeliveries].sort((a, b) => {
+    const recentDeliveries = [...deliveries].sort((a, b) => {
       const left = new Date(a.due_date || a.created_at || 0).getTime();
       const right = new Date(b.due_date || b.created_at || 0).getTime();
       return left - right;
@@ -764,7 +849,7 @@ app.get('/', async (req, res) => {
         error: null,
         summary: {
           packagesCount: myPackages.length,
-          deliveriesCount: myDeliveries.length,
+          deliveriesCount: deliveries.length,
           openDeliveriesCount: openDeliveries.length,
           paymentsCount: myPayments.length,
           dueAmount
@@ -915,9 +1000,10 @@ app.get('/user-dashboard', requireAuth, async (req, res) => {
       : allPackages.filter((p) => String(p.user_id) === String(req.currentUser.user_id));
 
     const packageIds = new Set(packages.map((p) => String(p.package_id)));
-    const deliveries = allDeliveries.filter((d) => packageIds.has(String(d.package_id)));
-    const deliveryIds = new Set(deliveries.map((d) => String(d.delivery_id)));
+    const ownedDeliveries = allDeliveries.filter((d) => packageIds.has(String(d.package_id)));
+    const deliveryIds = new Set(ownedDeliveries.map((d) => String(d.delivery_id)));
     const payments = allPayments.filter((p) => deliveryIds.has(String(p.delivery_id)));
+    const deliveries = enrichDeliveriesWithPaymentState(ownedDeliveries, packages, payments);
 
     const paidDeliveriesCount = deliveries.filter((d) => String(d.status || "").toLowerCase() === "paid").length;
     const overdueDeliveriesCount = deliveries.filter((d) => String(d.status || "").toLowerCase() === "overdue").length;
@@ -1177,6 +1263,16 @@ app.get('/deliveries', requireAuth, async (req, res) => {
     const allPayments = paymentsResp.data || [];
     let deliveryPool = allDeliveries;
     let paymentPool = allPayments;
+    const nameFilterRaw = String(req.query.name || "").trim();
+    const nameFilter = nameFilterRaw.toLowerCase();
+    const paymentMethodQuery = String(req.query.payment_method || "").trim();
+    const selectedPaymentMethod = !paymentMethodQuery || paymentMethodQuery.toLowerCase() === "all"
+      ? "all"
+      : (normalizePaymentMethod(paymentMethodQuery) || "all");
+    const paymentStatusQuery = String(req.query.payment_status || "all").toLowerCase().trim();
+    const selectedPaymentStatus = paymentStatusQuery === "paid" || paymentStatusQuery === "unpaid"
+      ? paymentStatusQuery
+      : "all";
     const isAdmin = req.currentRole === "admin";
     const myPackages = isAdmin
       ? []
@@ -1285,9 +1381,48 @@ app.get('/deliveries', requireAuth, async (req, res) => {
       };
     });
 
+    if (nameFilter) {
+      deliveries = deliveries.filter((delivery) => {
+        const receiverName = String(delivery.receiver_name || "").toLowerCase();
+        const trackingNumber = String(delivery.tracking_number || "").toLowerCase();
+        const deliveryId = String(delivery.delivery_id || "").toLowerCase();
+        return receiverName.includes(nameFilter)
+          || trackingNumber.includes(nameFilter)
+          || deliveryId.includes(nameFilter);
+      });
+    }
+
+    if (selectedPaymentMethod !== "all") {
+      deliveries = deliveries.filter((delivery) => {
+        return (normalizePaymentMethod(delivery.payment_method) || "online_bank") === selectedPaymentMethod;
+      });
+    }
+
+    if (selectedPaymentStatus !== "all") {
+      deliveries = deliveries.filter((delivery) => {
+        const statusKey = String(delivery.payment_status || "").toLowerCase().trim();
+        if (selectedPaymentStatus === "paid") return statusKey === "paid";
+        return statusKey === "unpaid" || statusKey === "pending" || statusKey === "pending_payment" || statusKey === "overdue";
+      });
+    }
+
+    const returnToParams = new URLSearchParams();
+    if (nameFilterRaw) returnToParams.set("name", nameFilterRaw);
+    if (selectedPaymentMethod !== "all") returnToParams.set("payment_method", selectedPaymentMethod);
+    if (selectedPaymentStatus !== "all") returnToParams.set("payment_status", selectedPaymentStatus);
+    const returnTo = returnToParams.toString()
+      ? `/deliveries?${returnToParams.toString()}`
+      : "/deliveries";
+
     res.render('deliveries', {
       deliveries,
-      message: req.query.message || null
+      message: req.query.message || null,
+      filters: {
+        name: nameFilterRaw,
+        paymentMethod: selectedPaymentMethod,
+        paymentStatus: selectedPaymentStatus
+      },
+      returnTo
     });
   } catch (err) {
     console.error(err.message);
@@ -1398,9 +1533,17 @@ app.get('/payments/:deliveryId', requireAuth, async (req, res) => {
       }
     }
 
-    const paymentRaw = (paymentsResp.data || []).find(
-      (payment) => String(payment.delivery_id) === String(delivery.delivery_id)
-    ) || null;
+    const paymentRaw = (paymentsResp.data || [])
+      .filter((payment) => String(payment.delivery_id) === String(delivery.delivery_id))
+      .sort((left, right) => {
+        const leftTime = new Date(left.payment_date || left.paid_at || 0).getTime();
+        const rightTime = new Date(right.payment_date || right.paid_at || 0).getTime();
+        if (rightTime !== leftTime) return rightTime - leftTime;
+        const leftId = Number.parseInt(left.payment_id, 10);
+        const rightId = Number.parseInt(right.payment_id, 10);
+        if (Number.isFinite(leftId) && Number.isFinite(rightId)) return rightId - leftId;
+        return 0;
+      })[0] || null;
     const payment = paymentRaw
       ? (() => {
         const method = normalizePaymentMethod(paymentRaw.payment_method) || "online_bank";
@@ -1465,11 +1608,10 @@ app.post('/payments/:deliveryId', requireAuth, async (req, res) => {
       || "online_bank";
     const deliveryMethod = normalizePaymentMethod(delivery.payment_method) || "online_bank";
     if (deliveryMethod === "cod" || selectedMethod === "cod") {
-      return res.redirect(withNotice(
-        `/payments/${req.params.deliveryId}`,
-        "COD cannot be paid online. Payment is created automatically when delivery is marked delivered.",
-        "warning"
-      ));
+      await axios.put(`${base_url}/deliveries/${req.params.deliveryId}/payment-method`, {
+        payment_method: "cod"
+      });
+      return res.redirect('/deliveries');
     }
     const payload = {
       delivery_id: req.params.deliveryId,
@@ -1526,9 +1668,17 @@ app.get('/invoice/:deliveryId', requireAuth, async (req, res) => {
     const service = (deliveryServicesResp.data || []).find(
       (s) => String(s.service_id) === String(pack && pack.service_id)
     ) || null;
-    const payment = (paymentsResp.data || []).find(
-      (p) => String(p.delivery_id) === String(delivery.delivery_id)
-    ) || null;
+    const payment = (paymentsResp.data || [])
+      .filter((p) => String(p.delivery_id) === String(delivery.delivery_id))
+      .sort((left, right) => {
+        const leftTime = new Date(left.payment_date || left.paid_at || 0).getTime();
+        const rightTime = new Date(right.payment_date || right.paid_at || 0).getTime();
+        if (rightTime !== leftTime) return rightTime - leftTime;
+        const leftId = Number.parseInt(left.payment_id, 10);
+        const rightId = Number.parseInt(right.payment_id, 10);
+        if (Number.isFinite(leftId) && Number.isFinite(rightId)) return rightId - leftId;
+        return 0;
+      })[0] || null;
 
     let accountUser = null;
     if (pack && pack.user_id) {
@@ -1608,8 +1758,18 @@ app.post("/create-delivery-service", requireAdmin, async (req, res) => {
 // [PAYMENT] List payments (filtered for non-admin users).
 app.get('/payments', requireAuth, async (req, res) => {
   try {
-    const resp = await axios.get(`${base_url}/payments`);
-    let payments = resp.data || [];
+    const [paymentsResp, deliveriesResp] = await Promise.all([
+      axios.get(`${base_url}/payments`),
+      axios.get(`${base_url}/deliveries`)
+    ]);
+    let payments = paymentsResp.data || [];
+    const deliveries = deliveriesResp.data || [];
+    const deliveryAmountById = new Map(
+      deliveries.map((delivery) => [
+        String(delivery.delivery_id),
+        Number.parseFloat(delivery.amount)
+      ])
+    );
 
     if (!req.currentUser.role || req.currentUser.role !== "admin") {
       const currentUserId = String(req.currentUser.user_id);
@@ -1623,17 +1783,14 @@ app.get('/payments', requireAuth, async (req, res) => {
       if (!needsFallbackFilter) {
         payments = directPayments;
       } else {
-        const [packagesResp, deliveriesResp] = await Promise.all([
-          axios.get(`${base_url}/packages`),
-          axios.get(`${base_url}/deliveries`)
-        ]);
+        const packagesResp = await axios.get(`${base_url}/packages`);
         const myPackageIds = new Set(
           (packagesResp.data || [])
             .filter((p) => String(p.user_id) === currentUserId)
             .map((p) => String(p.package_id))
         );
         const myDeliveryIds = new Set(
-          (deliveriesResp.data || [])
+          deliveries
             .filter((d) => myPackageIds.has(String(d.package_id)))
             .map((d) => String(d.delivery_id))
         );
@@ -1656,12 +1813,17 @@ app.get('/payments', requireAuth, async (req, res) => {
       const method = normalizePaymentMethod(payment.payment_method) || "online_bank";
       const statusRaw = String(payment.payment_status || "").toLowerCase().trim();
       const status = statusRaw || (method === "cod" ? "pending" : "pending_payment");
+      const rawAmount = deliveryAmountById.get(String(payment.delivery_id));
+      const costAmount = Number.isFinite(rawAmount)
+        ? Math.round(rawAmount * 100) / 100
+        : null;
       return {
         ...payment,
         payment_method: method,
         payment_method_label: formatPaymentMethod(method),
         payment_status: status,
-        payment_status_label: formatPaymentStatus(status)
+        payment_status_label: formatPaymentStatus(status),
+        cost_amount: costAmount
       };
     });
 
@@ -1722,9 +1884,17 @@ app.get('/pay-delivery/:deliveryId', requireAuth, async (req, res) => {
     }
 
     const paymentsResp = await axios.get(`${base_url}/payments`);
-    const existingPaymentRaw = (paymentsResp.data || []).find(
-      (p) => String(p.delivery_id) === String(delivery.delivery_id)
-    ) || null;
+    const existingPaymentRaw = (paymentsResp.data || [])
+      .filter((p) => String(p.delivery_id) === String(delivery.delivery_id))
+      .sort((left, right) => {
+        const leftTime = new Date(left.payment_date || left.paid_at || 0).getTime();
+        const rightTime = new Date(right.payment_date || right.paid_at || 0).getTime();
+        if (rightTime !== leftTime) return rightTime - leftTime;
+        const leftId = Number.parseInt(left.payment_id, 10);
+        const rightId = Number.parseInt(right.payment_id, 10);
+        if (Number.isFinite(leftId) && Number.isFinite(rightId)) return rightId - leftId;
+        return 0;
+      })[0] || null;
     const existingPayment = existingPaymentRaw
       ? (() => {
         const method = normalizePaymentMethod(existingPaymentRaw.payment_method) || "online_bank";
@@ -1782,11 +1952,10 @@ app.post('/pay-delivery/:deliveryId', requireAuth, async (req, res) => {
     const preferredMethod = normalizePaymentMethod(delivery.payment_method) || "online_bank";
     const selectedMethod = normalizePaymentMethod(req.body.payment_method) || preferredMethod;
     if (preferredMethod === "cod" || selectedMethod === "cod") {
-      return res.redirect(withNotice(
-        `/pay-delivery/${req.params.deliveryId}`,
-        "COD cannot be paid online. Payment is created automatically when delivery is marked delivered.",
-        "warning"
-      ));
+      await axios.put(`${base_url}/deliveries/${req.params.deliveryId}/payment-method`, {
+        payment_method: "cod"
+      });
+      return res.redirect('/deliveries');
     }
     const payload = {
       delivery_id: req.params.deliveryId,
@@ -1927,9 +2096,7 @@ app.post("/create-package", requireAuth, async (req, res) => {
   const userId = isAdmin
     ? String(req.body.user_id || "").trim()
     : String(req.currentUser.user_id || "").trim();
-  const serviceId = isAdmin
-    ? String(req.body.service_id || "").trim()
-    : "";
+  const serviceId = String(req.body.service_id || "").trim();
   const rawWeight = String(req.body.weight || "").trim();
   const weight = normalizeWeight(rawWeight);
   const receiverName = String(req.body.receiver_name || "").trim();
@@ -1962,7 +2129,7 @@ app.post("/create-package", requireAuth, async (req, res) => {
   const validationMessage = (() => {
     if (!userId) return "User is required.";
     if (isAdmin && !trackingNumber) return "Tracking number is required.";
-    if (isAdmin && !serviceId) return "Delivery service is required.";
+    if (!serviceId) return "Delivery service is required.";
     if (!Number.isFinite(weight) || weight < minPackageWeight || weight > maxPackageWeight) {
       return `Weight must be between ${minPackageWeight} and ${maxPackageWeight} kg.`;
     }
@@ -2002,37 +2169,52 @@ app.post("/create-package", requireAuth, async (req, res) => {
   }
 
   try {
-    if (!isAdmin) {
-      const draftResp = await axios.post(base_url + '/package-drafts', {
-        ...data,
-        weight,
-        status: "draft"
-      });
-      const createdDraftId = Number.parseInt(
-        draftResp && draftResp.data && draftResp.data.draft_id,
-        10
-      );
+    const packageResp = await axios.post(base_url + '/packages', {
+      ...data,
+      weight
+    });
+    if (isAdmin) {
+      return res.redirect("/packages");
+    }
 
-      if (Number.isFinite(createdDraftId) && createdDraftId > 0) {
-        return res.redirect(withNotice(
-          `/package-drafts/${createdDraftId}/payment`,
-          "Draft saved. Confirm payment to generate tracking and create delivery.",
-          "info"
-        ));
-      }
-
+    const createdPackageId = Number.parseInt(
+      packageResp && packageResp.data && packageResp.data.package_id,
+      10
+    );
+    if (!Number.isFinite(createdPackageId) || createdPackageId <= 0) {
       return res.redirect(withNotice(
-        "/user-dashboard",
-        "Draft was saved.",
+        "/deliveries",
+        "Package created. Please open Deliveries to continue payment.",
         "info"
       ));
     }
 
-    await axios.post(base_url + '/packages', {
-      ...data,
-      weight
-    });
-    return res.redirect("/packages");
+    try {
+      const deliveryResp = await axios.post(
+        `${base_url}/deliveries`,
+        buildCustomerAutoDeliveryPayload(createdPackageId, weight)
+      );
+      const createdDeliveryId = Number.parseInt(
+        deliveryResp && deliveryResp.data && deliveryResp.data.delivery_id,
+        10
+      );
+
+      if (Number.isFinite(createdDeliveryId) && createdDeliveryId > 0) {
+        return res.redirect(withNotice(
+          `/payments/${createdDeliveryId}`,
+          "Package created. You can complete payment now.",
+          "info"
+        ));
+      }
+    } catch (deliveryErr) {
+      console.error('Auto-create delivery failed after package creation:', deliveryErr.message);
+    }
+
+    return res.redirect(withNotice(
+      "/deliveries",
+      "Package created. Please continue from Deliveries.",
+      "info"
+    ));
   } catch (err) {
     const apiMessage = err.response && err.response.data && err.response.data.message;
     const message = apiMessage || "Error creating package";
@@ -2060,168 +2242,6 @@ app.post("/create-package", requireAuth, async (req, res) => {
       console.error('Create package fallback load failed:', loadErr.message);
       return res.status(500).send(message);
     }
-  }
-});
-
-// [DRAFT] Render customer draft payment confirmation page.
-app.get("/package-drafts/:draftId/payment", requireAuth, async (req, res) => {
-  try {
-    const draftResp = await axios.get(`${base_url}/package-drafts/${req.params.draftId}`);
-    const draft = draftResp.data || null;
-    if (!draft) {
-      return res.status(404).send("Draft not found");
-    }
-
-    if (req.currentRole !== "admin" && String(draft.user_id) !== String(req.currentUser.user_id)) {
-      return res.status(403).render('access-denied', {
-        message: "You can only access your own package drafts."
-      });
-    }
-
-    return res.render("package-draft-payment", {
-      draft,
-      error: req.query.error || null
-    });
-  } catch (err) {
-    const status = err.response && err.response.status;
-    if (status === 404) {
-      return res.status(404).send("Draft not found");
-    }
-    console.error("Load draft payment page failed:", err.message);
-    return res.status(500).send("Error loading draft payment page");
-  }
-});
-
-// [DRAFT] Confirm payment stage: create package + delivery, then remove draft.
-app.post("/package-drafts/:draftId/confirm", requireAuth, async (req, res) => {
-  let createdPackageId = null;
-
-  try {
-    const draftResp = await axios.get(`${base_url}/package-drafts/${req.params.draftId}`);
-    const draft = draftResp.data || null;
-    if (!draft) {
-      return res.status(404).send("Draft not found");
-    }
-
-    if (req.currentRole !== "admin" && String(draft.user_id) !== String(req.currentUser.user_id)) {
-      return res.status(403).render('access-denied', {
-        message: "You can only confirm your own package drafts."
-      });
-    }
-
-    const selectedMethod = normalizePaymentMethod(req.body.payment_method)
-      || normalizePaymentMethod(draft.payment_method)
-      || "online_bank";
-
-    const packagePayload = {
-      user_id: draft.user_id,
-      service_id: draft.service_id,
-      weight: draft.weight,
-      receiver_name: draft.receiver_name,
-      receiver_phone: draft.receiver_phone,
-      house_number: draft.house_number,
-      village_no: draft.village_no,
-      soi: draft.soi,
-      road: draft.road,
-      subdistrict: draft.subdistrict,
-      district: draft.district,
-      province: draft.province,
-      postal_code: draft.postal_code
-    };
-    const packageResp = await axios.post(`${base_url}/packages`, packagePayload);
-    createdPackageId = Number.parseInt(packageResp && packageResp.data && packageResp.data.package_id, 10);
-    if (!Number.isFinite(createdPackageId) || createdPackageId <= 0) {
-      return res.redirect(withNotice(
-        `/package-drafts/${req.params.draftId}/payment`,
-        "Unable to finalize package from draft.",
-        "error"
-      ));
-    }
-
-    const deliveryPayload = {
-      ...buildCustomerAutoDeliveryPayload(createdPackageId, draft.weight),
-      payment_method: selectedMethod
-    };
-    const deliveryResp = await axios.post(`${base_url}/deliveries`, deliveryPayload);
-    const createdDeliveryId = Number.parseInt(
-      deliveryResp && deliveryResp.data && deliveryResp.data.delivery_id,
-      10
-    );
-    if (!Number.isFinite(createdDeliveryId) || createdDeliveryId <= 0) {
-      return res.redirect(withNotice(
-        `/package-drafts/${req.params.draftId}/payment`,
-        "Package was created but delivery could not be generated.",
-        "error"
-      ));
-    }
-
-    try {
-      await axios.delete(`${base_url}/package-drafts/${req.params.draftId}`);
-    } catch (deleteDraftErr) {
-      console.error("Failed to delete finalized draft:", deleteDraftErr.message);
-    }
-
-    if (selectedMethod === "cod") {
-      return res.redirect(withNotice(
-        "/deliveries",
-        "Draft confirmed. Tracking was generated and COD delivery is pending.",
-        "success"
-      ));
-    }
-
-    return res.redirect(withNotice(
-      `/payments/${createdDeliveryId}`,
-      "Draft confirmed. Complete payment to continue.",
-      "success"
-    ));
-  } catch (err) {
-    if (Number.isFinite(createdPackageId) && createdPackageId > 0) {
-      try {
-        await axios.delete(`${base_url}/packages/${createdPackageId}`);
-      } catch (rollbackErr) {
-        console.error("Package rollback failed after draft confirmation error:", rollbackErr.message);
-      }
-    }
-
-    const apiMessage = err.response && err.response.data && err.response.data.message;
-    const message = apiMessage || "Failed to confirm draft payment.";
-    return res.redirect(withNotice(
-      `/package-drafts/${req.params.draftId}/payment`,
-      message,
-      "error"
-    ));
-  }
-});
-
-// [DRAFT] Cancel draft before payment confirmation.
-app.post("/package-drafts/:draftId/cancel", requireAuth, async (req, res) => {
-  try {
-    const draftResp = await axios.get(`${base_url}/package-drafts/${req.params.draftId}`);
-    const draft = draftResp.data || null;
-    if (!draft) {
-      return res.status(404).send("Draft not found");
-    }
-
-    if (req.currentRole !== "admin" && String(draft.user_id) !== String(req.currentUser.user_id)) {
-      return res.status(403).render('access-denied', {
-        message: "You can only cancel your own package drafts."
-      });
-    }
-
-    await axios.delete(`${base_url}/package-drafts/${req.params.draftId}`);
-    return res.redirect(withNotice(
-      "/user-dashboard",
-      "Draft cancelled successfully.",
-      "success"
-    ));
-  } catch (err) {
-    const apiMessage = err.response && err.response.data && err.response.data.message;
-    const message = apiMessage || "Failed to cancel draft.";
-    return res.redirect(withNotice(
-      "/user-dashboard",
-      message,
-      "error"
-    ));
   }
 });
 

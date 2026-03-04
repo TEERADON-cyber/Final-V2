@@ -15,6 +15,29 @@ const MIN_PACKAGE_WEIGHT = 0.1;
 const MAX_PACKAGE_WEIGHT = 125;
 const DEFAULT_SHIPPING_BASE_FEE = Number.isFinite(SHIPPING_BASE_FEE) ? SHIPPING_BASE_FEE : 30;
 const DEFAULT_SERVICE_PRICE_RATE = Number.isFinite(SHIPPING_PER_KG) ? SHIPPING_PER_KG : 20;
+const STANDARD_DELIVERY_SERVICE_NAME = 'Standard Delivery';
+const EXPRESS_DELIVERY_SERVICE_NAME = 'Express Delivery';
+const STANDARD_DELIVERY_PRICE_RATE_INPUT = Number.parseFloat(
+  process.env.STANDARD_DELIVERY_PRICE_RATE || String(DEFAULT_SERVICE_PRICE_RATE)
+);
+const EXPRESS_DELIVERY_PRICE_RATE_INPUT = Number.parseFloat(
+  process.env.EXPRESS_DELIVERY_PRICE_RATE || String(DEFAULT_SERVICE_PRICE_RATE)
+);
+const EXPRESS_DELIVERY_ADDITIONAL_CHARGE_INPUT = Number.parseFloat(
+  process.env.EXPRESS_DELIVERY_ADDITIONAL_CHARGE || '40'
+);
+const STANDARD_DELIVERY_PRICE_RATE = Number.isFinite(STANDARD_DELIVERY_PRICE_RATE_INPUT)
+  && STANDARD_DELIVERY_PRICE_RATE_INPUT > 0
+  ? Math.round(STANDARD_DELIVERY_PRICE_RATE_INPUT * 100) / 100
+  : DEFAULT_SERVICE_PRICE_RATE;
+const EXPRESS_DELIVERY_PRICE_RATE = Number.isFinite(EXPRESS_DELIVERY_PRICE_RATE_INPUT)
+  && EXPRESS_DELIVERY_PRICE_RATE_INPUT > 0
+  ? Math.round(EXPRESS_DELIVERY_PRICE_RATE_INPUT * 100) / 100
+  : DEFAULT_SERVICE_PRICE_RATE;
+const EXPRESS_DELIVERY_ADDITIONAL_CHARGE = Number.isFinite(EXPRESS_DELIVERY_ADDITIONAL_CHARGE_INPUT)
+  && EXPRESS_DELIVERY_ADDITIONAL_CHARGE_INPUT > 0
+  ? Math.round(EXPRESS_DELIVERY_ADDITIONAL_CHARGE_INPUT * 100) / 100
+  : 40;
 
 // [AUTH] Normalize role input to supported values.
 function normalizeUserRole(role) {
@@ -57,6 +80,31 @@ function normalizeDeliveryStatus(rawStatus, fallback = 'unpaid') {
 function normalizeOrderStatus(rawStatus, fallback = 'processing') {
   const value = String(rawStatus || '').toLowerCase().trim();
   return ALLOWED_ORDER_STATUSES.has(value) ? value : fallback;
+}
+
+// [SERVICE] Normalize delivery service names to canonical values.
+function normalizeDeliveryServiceName(rawName) {
+  const value = String(rawName || '').toLowerCase().trim();
+  if (!value) return null;
+
+  const aliases = {
+    standard: STANDARD_DELIVERY_SERVICE_NAME,
+    standard_delivery: STANDARD_DELIVERY_SERVICE_NAME,
+    'standard delivery': STANDARD_DELIVERY_SERVICE_NAME,
+    express: EXPRESS_DELIVERY_SERVICE_NAME,
+    express_delivery: EXPRESS_DELIVERY_SERVICE_NAME,
+    'express delivery': EXPRESS_DELIVERY_SERVICE_NAME
+  };
+
+  return aliases[value] || null;
+}
+
+// [SERVICE] Resolve automatic surcharge for express delivery.
+function resolveServiceAdditionalCharge(serviceName) {
+  const normalized = normalizeDeliveryServiceName(serviceName);
+  return normalized === EXPRESS_DELIVERY_SERVICE_NAME
+    ? EXPRESS_DELIVERY_ADDITIONAL_CHARGE
+    : 0;
 }
 
 // [PAYMENT] Resolve payment status from method-specific business rules.
@@ -157,30 +205,8 @@ db.serialize(() => {
     )
   `);
 
-  // PACKAGE_DRAFTS (customer pre-payment stage)
-  db.run(`
-    CREATE TABLE IF NOT EXISTS package_drafts (
-      draft_id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      service_id INTEGER NOT NULL,
-      weight REAL NOT NULL,
-      receiver_name TEXT NOT NULL,
-      receiver_phone TEXT NOT NULL,
-      house_number TEXT NOT NULL,
-      village_no TEXT,
-      soi TEXT,
-      road TEXT,
-      subdistrict TEXT NOT NULL,
-      district TEXT NOT NULL,
-      province TEXT NOT NULL,
-      postal_code TEXT NOT NULL,
-      payment_method TEXT NOT NULL DEFAULT 'online_bank' CHECK(payment_method IN ('online_bank','cod','credit_card','promptpay')),
-      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','pending_payment')),
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-      FOREIGN KEY (service_id) REFERENCES delivery_services(service_id)
-    )
-  `);
+  // Cleanup deprecated draft flow table.
+  db.run(`DROP TABLE IF EXISTS package_drafts`);
 
   // PACKAGES (formerly meters)
   db.run(`
@@ -516,6 +542,48 @@ db.serialize(() => {
     WHERE package_status IS NULL OR trim(package_status) = ''
   `);
   db.run(`
+    INSERT OR IGNORE INTO delivery_services (service_name,price_rate)
+    VALUES ('${STANDARD_DELIVERY_SERVICE_NAME}', ${STANDARD_DELIVERY_PRICE_RATE})
+  `);
+  db.run(`
+    INSERT OR IGNORE INTO delivery_services (service_name,price_rate)
+    VALUES ('${EXPRESS_DELIVERY_SERVICE_NAME}', ${EXPRESS_DELIVERY_PRICE_RATE})
+  `);
+  db.run(`
+    UPDATE delivery_services
+    SET price_rate = ${STANDARD_DELIVERY_PRICE_RATE}
+    WHERE lower(trim(service_name)) = lower('${STANDARD_DELIVERY_SERVICE_NAME}')
+  `);
+  db.run(`
+    UPDATE delivery_services
+    SET price_rate = ${EXPRESS_DELIVERY_PRICE_RATE}
+    WHERE lower(trim(service_name)) = lower('${EXPRESS_DELIVERY_SERVICE_NAME}')
+  `);
+  db.run(`
+    UPDATE packages
+    SET service_id = (
+      SELECT service_id
+      FROM delivery_services
+      WHERE lower(trim(service_name)) = lower('${STANDARD_DELIVERY_SERVICE_NAME}')
+      LIMIT 1
+    )
+    WHERE service_id NOT IN (
+      SELECT service_id
+      FROM delivery_services
+      WHERE lower(trim(service_name)) IN (
+        lower('${STANDARD_DELIVERY_SERVICE_NAME}'),
+        lower('${EXPRESS_DELIVERY_SERVICE_NAME}')
+      )
+    )
+  `);
+  db.run(`
+    DELETE FROM delivery_services
+    WHERE lower(trim(service_name)) NOT IN (
+      lower('${STANDARD_DELIVERY_SERVICE_NAME}'),
+      lower('${EXPRESS_DELIVERY_SERVICE_NAME}')
+    )
+  `);
+  db.run(`
     UPDATE delivery_services
     SET price_rate = ${DEFAULT_SERVICE_PRICE_RATE}
     WHERE price_rate IS NULL OR CAST(price_rate AS REAL) <= 0
@@ -750,179 +818,159 @@ app.delete('/users/:id', (req, res) =>
 // ==========================
 // DELIVERY SERVICES ROUTES (formerly utilities)
 // ==========================
-// [SERVICE] Get all delivery services.
-app.get('/delivery-services', (req, res) => getAll('delivery_services', res));
-
-// [SERVICE] Create delivery service.
-app.post('/delivery-services', (req, res) => {
-  const serviceName = String(req.body.service_name || '').trim();
-  const parsedPriceRate = Number.parseFloat(req.body.price_rate);
-  const priceRate = Number.isFinite(parsedPriceRate)
-    ? Math.round(parsedPriceRate * 100) / 100
-    : NaN;
-
-  if (!serviceName) {
-    return res.status(400).json({ message: 'service_name is required' });
-  }
-  if (!Number.isFinite(priceRate) || priceRate <= 0) {
-    return res.status(400).json({ message: 'price_rate must be a positive number' });
-  }
-
-  db.run(
-    `INSERT INTO delivery_services (service_name,price_rate) VALUES (?,?)`,
-    [serviceName, priceRate],
-    function (err) {
-      if (err) {
-        const message = String(err.message || '').toLowerCase();
-        if (message.includes('unique constraint failed: delivery_services.service_name')) {
-          return res.status(409).json({ message: 'Delivery service name already exists' });
-        }
-        return res.status(500).json(err);
-      }
-      res.json({ service_id: this.lastID, service_name: serviceName, price_rate: priceRate });
+// [SERVICE] Get all delivery services in canonical order.
+app.get('/delivery-services', (req, res) => {
+  db.all(
+    `SELECT service_id,
+            service_name,
+            price_rate,
+            CASE
+              WHEN lower(trim(service_name)) = lower(?) THEN ?
+              ELSE 0
+            END AS additional_charge
+     FROM delivery_services
+     ORDER BY CASE
+       WHEN lower(trim(service_name)) = lower(?) THEN 0
+       WHEN lower(trim(service_name)) = lower(?) THEN 1
+       ELSE 2
+     END,
+     service_id ASC`,
+    [
+      EXPRESS_DELIVERY_SERVICE_NAME,
+      EXPRESS_DELIVERY_ADDITIONAL_CHARGE,
+      STANDARD_DELIVERY_SERVICE_NAME,
+      EXPRESS_DELIVERY_SERVICE_NAME
+    ],
+    (err, rows) => {
+      if (err) return res.status(500).json(err);
+      return res.json(rows);
     }
   );
 });
 
-// [SERVICE] Delete delivery service by id.
-app.delete('/delivery-services/:id', (req, res) =>
-  deleteById('delivery_services', 'service_id', req.params.id, res)
-);
-
-// ==========================
-// PACKAGE DRAFTS ROUTES
-// ==========================
-// [DRAFT] Get all package drafts.
-app.get('/package-drafts', (req, res) => getAll('package_drafts', res));
-
-// [DRAFT] Get package draft by id.
-app.get('/package-drafts/:id', (req, res) =>
-  getById('package_drafts', 'draft_id', req.params.id, res)
-);
-
-// [DRAFT] Create package draft (no tracking number, no delivery yet).
-app.post('/package-drafts', (req, res) => {
-  const userId = Number.parseInt(req.body.user_id, 10);
-  const serviceId = Number.parseInt(req.body.service_id, 10);
-  const hasServiceInput = typeof req.body.service_id !== 'undefined'
-    && String(req.body.service_id || '').trim() !== '';
-  const weight = normalizeWeight(req.body.weight);
-  const receiverName = String(req.body.receiver_name || "").trim();
-  const receiverPhone = String(req.body.receiver_phone || "").trim();
-  const houseNumber = String(req.body.house_number || "").trim();
-  const villageNo = String(req.body.village_no || "").trim() || null;
-  const soi = String(req.body.soi || "").trim() || null;
-  const road = String(req.body.road || "").trim() || null;
-  const subdistrict = String(req.body.subdistrict || "").trim();
-  const district = String(req.body.district || "").trim();
-  const province = String(req.body.province || "").trim();
-  const postalCode = String(req.body.postal_code || "").trim();
-  const paymentMethod = normalizePaymentMethod(req.body.payment_method) || 'online_bank';
-  const status = String(req.body.status || 'draft').toLowerCase().trim() === 'pending_payment'
-    ? 'pending_payment'
-    : 'draft';
-
-  if (!Number.isFinite(userId) || userId <= 0) {
-    return res.status(400).json({ message: "user_id must be a positive integer" });
-  }
-  if (hasServiceInput && (!Number.isFinite(serviceId) || serviceId <= 0)) {
-    return res.status(400).json({ message: "service_id must be a positive integer" });
-  }
-  if (!Number.isFinite(weight) || weight < MIN_PACKAGE_WEIGHT || weight > MAX_PACKAGE_WEIGHT) {
+// [SERVICE] Upsert delivery service (Standard/Express only).
+app.post('/delivery-services', (req, res) => {
+  const serviceName = String(req.body.service_name || '').trim();
+  const canonicalName = normalizeDeliveryServiceName(serviceName);
+  if (!canonicalName) {
     return res.status(400).json({
-      message: `weight must be a number between ${MIN_PACKAGE_WEIGHT} and ${MAX_PACKAGE_WEIGHT} kg`
+      message: `service_name must be "${STANDARD_DELIVERY_SERVICE_NAME}" or "${EXPRESS_DELIVERY_SERVICE_NAME}"`
     });
   }
-  if (!receiverName) return res.status(400).json({ message: "receiver_name is required" });
-  if (!/^0\d{9}$/.test(receiverPhone)) {
-    return res.status(400).json({ message: "receiver_phone must be exactly 10 digits and start with 0" });
-  }
-  if (!houseNumber) return res.status(400).json({ message: "house_number is required" });
-  if (!subdistrict) return res.status(400).json({ message: "subdistrict is required" });
-  if (!district) return res.status(400).json({ message: "district is required" });
-  if (!province) return res.status(400).json({ message: "province is required" });
-  if (!/^\d{5}$/.test(postalCode)) {
-    return res.status(400).json({ message: "postal_code must be exactly 5 digits" });
-  }
 
-  const resolveServiceId = (done) => {
-    if (hasServiceInput) return done(null, serviceId);
+  const parsedPriceRate = Number.parseFloat(req.body.price_rate);
+  const defaultRate = canonicalName === EXPRESS_DELIVERY_SERVICE_NAME
+    ? EXPRESS_DELIVERY_PRICE_RATE
+    : STANDARD_DELIVERY_PRICE_RATE;
+  const priceRate = Number.isFinite(parsedPriceRate) && parsedPriceRate > 0
+    ? Math.round(parsedPriceRate * 100) / 100
+    : defaultRate;
 
-    return db.get(
-      `SELECT service_id FROM delivery_services ORDER BY service_id ASC LIMIT 1`,
-      [],
-      (serviceErr, row) => {
-        if (serviceErr) return done(serviceErr);
-        if (!row || !row.service_id) return done(new Error('NO_DEFAULT_SERVICE'));
-
-        const fallbackServiceId = Number.parseInt(row.service_id, 10);
-        if (!Number.isFinite(fallbackServiceId) || fallbackServiceId <= 0) {
-          return done(new Error('INVALID_DEFAULT_SERVICE'));
-        }
-        return done(null, fallbackServiceId);
-      }
-    );
-  };
-
-  return resolveServiceId((serviceResolveErr, resolvedServiceId) => {
-    if (serviceResolveErr) {
-      if (serviceResolveErr.message === 'NO_DEFAULT_SERVICE' || serviceResolveErr.message === 'INVALID_DEFAULT_SERVICE') {
-        return res.status(400).json({ message: "No delivery service available. Please create a delivery service first." });
-      }
-      return res.status(500).json(serviceResolveErr);
-    }
-
+  db.serialize(() => {
+    db.run('BEGIN TRANSACTION');
     db.run(
-      `INSERT INTO package_drafts (
-        user_id,service_id,weight,
-        receiver_name,receiver_phone,
-        house_number,village_no,soi,road,subdistrict,district,province,postal_code,
-        payment_method,status
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [
-        userId,
-        resolvedServiceId,
-        weight,
-        receiverName,
-        receiverPhone,
-        houseNumber,
-        villageNo,
-        soi,
-        road,
-        subdistrict,
-        district,
-        province,
-        postalCode,
-        paymentMethod,
-        status
-      ],
-      function (err) {
-        if (err) {
-          const rawMessage = String(err.message || "").toLowerCase();
-          if (rawMessage.includes("foreign key constraint failed")) {
-            return res.status(400).json({ message: "Selected user or delivery service does not exist" });
-          }
-          if (rawMessage.includes("check constraint failed")) {
-            return res.status(400).json({ message: "Invalid draft status or payment method" });
-          }
-          return res.status(500).json(err);
+      `INSERT OR IGNORE INTO delivery_services (service_name,price_rate) VALUES (?,?)`,
+      [STANDARD_DELIVERY_SERVICE_NAME, STANDARD_DELIVERY_PRICE_RATE],
+      (seedStandardErr) => {
+        if (seedStandardErr) {
+          return db.run('ROLLBACK', () => res.status(500).json(seedStandardErr));
         }
 
-        return res.json({
-          draft_id: this.lastID,
-          user_id: userId,
-          service_id: resolvedServiceId,
-          status
-        });
+        db.run(
+          `INSERT OR IGNORE INTO delivery_services (service_name,price_rate) VALUES (?,?)`,
+          [EXPRESS_DELIVERY_SERVICE_NAME, EXPRESS_DELIVERY_PRICE_RATE],
+          (seedExpressErr) => {
+            if (seedExpressErr) {
+              return db.run('ROLLBACK', () => res.status(500).json(seedExpressErr));
+            }
+
+            db.run(
+              `UPDATE delivery_services SET price_rate = ? WHERE lower(trim(service_name)) = lower(?)`,
+              [priceRate, canonicalName],
+              (updateErr) => {
+                if (updateErr) {
+                  return db.run('ROLLBACK', () => res.status(500).json(updateErr));
+                }
+
+                db.run(
+                  `UPDATE packages
+                   SET service_id = (
+                     SELECT service_id
+                     FROM delivery_services
+                     WHERE lower(trim(service_name)) = lower(?)
+                     LIMIT 1
+                   )
+                   WHERE service_id NOT IN (
+                     SELECT service_id
+                     FROM delivery_services
+                     WHERE lower(trim(service_name)) IN (lower(?), lower(?))
+                   )`,
+                  [
+                    STANDARD_DELIVERY_SERVICE_NAME,
+                    STANDARD_DELIVERY_SERVICE_NAME,
+                    EXPRESS_DELIVERY_SERVICE_NAME
+                  ],
+                  (mapErr) => {
+                    if (mapErr) {
+                      return db.run('ROLLBACK', () => res.status(500).json(mapErr));
+                    }
+
+                    db.run(
+                      `DELETE FROM delivery_services
+                       WHERE lower(trim(service_name)) NOT IN (lower(?), lower(?))`,
+                      [STANDARD_DELIVERY_SERVICE_NAME, EXPRESS_DELIVERY_SERVICE_NAME],
+                      (deleteErr) => {
+                        if (deleteErr) {
+                          return db.run('ROLLBACK', () => res.status(500).json(deleteErr));
+                        }
+
+                        db.get(
+                          `SELECT service_id, service_name, price_rate
+                           FROM delivery_services
+                           WHERE lower(trim(service_name)) = lower(?)`,
+                          [canonicalName],
+                          (selectErr, row) => {
+                            if (selectErr) {
+                              return db.run('ROLLBACK', () => res.status(500).json(selectErr));
+                            }
+                            if (!row) {
+                              return db.run('ROLLBACK', () => res.status(404).json({
+                                message: 'Delivery service not found after update'
+                              }));
+                            }
+
+                            db.run('COMMIT', (commitErr) => {
+                              if (commitErr) {
+                                return db.run('ROLLBACK', () => res.status(500).json(commitErr));
+                              }
+                              return res.json({
+                                service_id: row.service_id,
+                                service_name: row.service_name,
+                                price_rate: row.price_rate,
+                                additional_charge: resolveServiceAdditionalCharge(row.service_name)
+                              });
+                            });
+                          }
+                        );
+                      }
+                    );
+                  }
+                );
+              }
+            );
+          }
+        );
       }
     );
   });
 });
 
-// [DRAFT] Delete package draft by id.
-app.delete('/package-drafts/:id', (req, res) =>
-  deleteById('package_drafts', 'draft_id', req.params.id, res)
-);
+// [SERVICE] Delete delivery service by id.
+app.delete('/delivery-services/:id', (_req, res) => {
+  return res.status(405).json({
+    message: 'Delivery services are fixed to Standard Delivery and Express Delivery and cannot be deleted.'
+  });
+});
 
 // ==========================
 // PACKAGES ROUTES (formerly meters)
@@ -990,8 +1038,15 @@ app.post('/packages', (req, res) => {
     }
 
     return db.get(
-      `SELECT service_id FROM delivery_services ORDER BY service_id ASC LIMIT 1`,
-      [],
+      `SELECT service_id
+       FROM delivery_services
+       ORDER BY CASE
+         WHEN lower(trim(service_name)) = lower(?) THEN 0
+         ELSE 1
+       END,
+       service_id ASC
+       LIMIT 1`,
+      [STANDARD_DELIVERY_SERVICE_NAME],
       (serviceErr, row) => {
         if (serviceErr) return done(serviceErr);
         if (!row || !row.service_id) {
@@ -1134,7 +1189,7 @@ app.post('/deliveries', (req, res) => {
       if (!packageRow) return res.status(400).json({ message: 'Selected package does not exist' });
 
       db.get(
-        `SELECT service_id, price_rate
+        `SELECT service_id, service_name, price_rate
          FROM delivery_services
          WHERE service_id = ?`,
         [packageRow.service_id],
@@ -1145,7 +1200,9 @@ app.post('/deliveries', (req, res) => {
           const serviceRate = Number.isFinite(parsedServiceRate) && parsedServiceRate > 0
             ? Math.round(parsedServiceRate * 100) / 100
             : DEFAULT_SERVICE_PRICE_RATE;
-          const resolvedAmount = calculateShippingAmount(packageRow.weight, serviceRate, additionalCharge);
+          const serviceSurcharge = resolveServiceAdditionalCharge(serviceRow && serviceRow.service_name);
+          const totalAdditionalCharge = Math.round((additionalCharge + serviceSurcharge) * 100) / 100;
+          const resolvedAmount = calculateShippingAmount(packageRow.weight, serviceRate, totalAdditionalCharge);
           if (!Number.isFinite(resolvedAmount) || resolvedAmount < 0) {
             return res.status(400).json({
               message: `Unable to calculate delivery amount. Ensure package weight is between ${MIN_PACKAGE_WEIGHT} and ${MAX_PACKAGE_WEIGHT} kg and service pricing is valid.`
@@ -1163,7 +1220,7 @@ app.post('/deliveries', (req, res) => {
             db.run(
               `INSERT INTO deliveries (package_id,delivery_date,amount,additional_charge,due_date,status,payment_method,order_status,delivered_at)
                VALUES (?,?,?,?,?,?,?,?,?)`,
-              [packageId, deliveryDate, resolvedAmount, additionalCharge, dueDate, deliveryStatus, paymentMethod, orderStatus, deliveredAt],
+              [packageId, deliveryDate, resolvedAmount, totalAdditionalCharge, dueDate, deliveryStatus, paymentMethod, orderStatus, deliveredAt],
               function (insertErr) {
                 if (insertErr) {
                   return db.run('ROLLBACK', () => res.status(500).json(insertErr));
@@ -1180,16 +1237,16 @@ app.post('/deliveries', (req, res) => {
                     if (commitErr) {
                       return db.run('ROLLBACK', () => res.status(500).json(commitErr));
                     }
-                    return res.json({
-                      delivery_id: deliveryId,
-                      status: deliveryStatus,
-                      order_status: orderStatus,
-                      amount: resolvedAmount,
-                      additional_charge: additionalCharge,
-                      payment_method: paymentMethod,
-                      payment_id: null,
-                      payment_status: 'pending',
-                      user_id: paymentUserId,
+                      return res.json({
+                        delivery_id: deliveryId,
+                        status: deliveryStatus,
+                        order_status: orderStatus,
+                        amount: resolvedAmount,
+                        additional_charge: totalAdditionalCharge,
+                        payment_method: paymentMethod,
+                        payment_id: null,
+                        payment_status: 'pending',
+                        user_id: paymentUserId,
                       message: 'COD payment will be created automatically when delivery is marked delivered.'
                     });
                   });
@@ -1218,7 +1275,7 @@ app.post('/deliveries', (req, res) => {
                         status: deliveryStatus,
                         order_status: orderStatus,
                         amount: resolvedAmount,
-                        additional_charge: additionalCharge,
+                        additional_charge: totalAdditionalCharge,
                         payment_method: paymentMethod,
                         payment_id: paymentId,
                         payment_status: autoPaymentStatus,
@@ -1368,6 +1425,143 @@ app.put('/deliveries/:id/order-status', (req, res) => {
                       return db.run('ROLLBACK', () => res.status(500).json(updatePaymentErr));
                     }
                     return finalizeDeliveryAsPaid();
+                  }
+                );
+              }
+            );
+          }
+        );
+      }
+    );
+  });
+});
+
+// [DELIVERY] Set payment method to COD and keep flow running without online payment.
+app.put('/deliveries/:id/payment-method', (req, res) => {
+  const deliveryId = Number.parseInt(req.params.id, 10);
+  const requestedMethod = normalizePaymentMethod(req.body.payment_method);
+
+  if (!Number.isFinite(deliveryId) || deliveryId <= 0) {
+    return res.status(400).json({ message: 'Invalid delivery id' });
+  }
+  if (requestedMethod !== 'cod') {
+    return res.status(400).json({ message: 'Only COD is supported via this endpoint.' });
+  }
+
+  db.serialize(() => {
+    db.run('BEGIN TRANSACTION');
+
+    db.get(
+      `SELECT deliveries.delivery_id,
+              deliveries.order_status,
+              deliveries.delivered_at,
+              packages.user_id
+       FROM deliveries
+       JOIN packages ON packages.package_id = deliveries.package_id
+       WHERE deliveries.delivery_id = ?`,
+      [deliveryId],
+      (deliveryErr, delivery) => {
+        if (deliveryErr) {
+          return db.run('ROLLBACK', () => res.status(500).json(deliveryErr));
+        }
+        if (!delivery) {
+          return db.run('ROLLBACK', () => res.status(404).json({ message: 'Delivery not found' }));
+        }
+
+        const orderStatus = normalizeOrderStatus(delivery.order_status, 'processing');
+        const deliveredAt = orderStatus === 'delivered'
+          ? (String(delivery.delivered_at || '').trim() || new Date().toISOString())
+          : null;
+        const deliveryStatus = orderStatus === 'delivered' ? 'paid' : 'unpaid';
+
+        db.run(
+          `UPDATE deliveries
+           SET payment_method = 'cod',
+               status = ?,
+               delivered_at = CASE
+                 WHEN ? = 'delivered' THEN COALESCE(delivered_at, ?)
+                 ELSE delivered_at
+               END
+           WHERE delivery_id = ?`,
+          [deliveryStatus, orderStatus, deliveredAt, deliveryId],
+          (updateDeliveryErr) => {
+            if (updateDeliveryErr) {
+              return db.run('ROLLBACK', () => res.status(500).json(updateDeliveryErr));
+            }
+
+            if (orderStatus !== 'delivered') {
+              return db.run(
+                `DELETE FROM payments WHERE delivery_id = ?`,
+                [deliveryId],
+                (deletePaymentErr) => {
+                  if (deletePaymentErr) {
+                    return db.run('ROLLBACK', () => res.status(500).json(deletePaymentErr));
+                  }
+                  return db.run('COMMIT', (commitErr) => {
+                    if (commitErr) {
+                      return db.run('ROLLBACK', () => res.status(500).json(commitErr));
+                    }
+                    return res.json({
+                      delivery_id: deliveryId,
+                      payment_method: 'cod',
+                      payment_status: 'pending',
+                      order_status: orderStatus,
+                      message: 'COD confirmed. Payment will be charged when delivery is marked delivered.'
+                    });
+                  });
+                }
+              );
+            }
+
+            return db.get(
+              `SELECT payment_id FROM payments WHERE delivery_id = ?`,
+              [deliveryId],
+              (paymentErr, payment) => {
+                if (paymentErr) {
+                  return db.run('ROLLBACK', () => res.status(500).json(paymentErr));
+                }
+
+                const commitPaid = () => db.run('COMMIT', (commitErr) => {
+                  if (commitErr) {
+                    return db.run('ROLLBACK', () => res.status(500).json(commitErr));
+                  }
+                  return res.json({
+                    delivery_id: deliveryId,
+                    payment_method: 'cod',
+                    payment_status: 'paid',
+                    order_status: orderStatus,
+                    paid_at: deliveredAt
+                  });
+                });
+
+                if (!payment) {
+                  return db.run(
+                    `INSERT INTO payments (delivery_id,user_id,payment_method,payment_status,transaction_ref,payment_date,paid_at)
+                     VALUES (?,?,?,?,?,?,?)`,
+                    [deliveryId, delivery.user_id, 'cod', 'paid', null, deliveredAt, deliveredAt],
+                    (insertPaymentErr) => {
+                      if (insertPaymentErr) {
+                        return db.run('ROLLBACK', () => res.status(500).json(insertPaymentErr));
+                      }
+                      return commitPaid();
+                    }
+                  );
+                }
+
+                return db.run(
+                  `UPDATE payments
+                   SET user_id = ?,
+                       payment_method = 'cod',
+                       payment_status = 'paid',
+                       payment_date = ?,
+                       paid_at = ?
+                   WHERE delivery_id = ?`,
+                  [delivery.user_id, deliveredAt, deliveredAt, deliveryId],
+                  (updatePaymentErr) => {
+                    if (updatePaymentErr) {
+                      return db.run('ROLLBACK', () => res.status(500).json(updatePaymentErr));
+                    }
+                    return commitPaid();
                   }
                 );
               }

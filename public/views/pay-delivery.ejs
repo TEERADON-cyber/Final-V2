@@ -9,7 +9,7 @@
   const paymentStatus = payment
     ? String(payment.payment_status || "").toLowerCase().trim()
     : (selectedMethod === "cod" && orderStatus !== "delivered" ? "pending" : "");
-  const isSettled = paidAlready || paymentStatus === "paid";
+  const isSettled = payment ? paymentStatus === "paid" : paidAlready;
   const isCodPending = selectedMethod === "cod" && paymentStatus !== "paid" && orderStatus !== "delivered";
   const lockPaymentForm = isSettled || isCodPending;
 %>

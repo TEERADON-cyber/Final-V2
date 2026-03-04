@@ -2,23 +2,27 @@
 
 <section class="card page-head">
   <h2>Create Delivery Service</h2>
-  <p>Add a new delivery service type.</p>
+  <p>Only Standard Delivery and Express Delivery are available. Use this page to adjust their price rate.</p>
 </section>
 
 <section class="card">
   <form class="form-grid" method="post" action="<%= rolePath('/create-delivery-service') %>">
     <div class="field">
       <label for="service_name">Delivery Service Name</label>
-      <input id="service_name" name="service_name" type="text" maxlength="120" required>
+      <select id="service_name" name="service_name" required>
+        <option value="Standard Delivery">Standard Delivery</option>
+        <option value="Express Delivery">Express Delivery</option>
+      </select>
     </div>
 
     <div class="field">
       <label for="price_rate">Price Rate (THB / kg)</label>
       <input id="price_rate" name="price_rate" type="number" step="0.01" min="0.01" required placeholder="e.g. 20">
+      <p class="muted">Express Delivery also has an automatic extra charge.</p>
     </div>
 
     <div class="actions">
-      <button class="btn" type="submit">Create Delivery Service</button>
+      <button class="btn" type="submit">Save Service Rate</button>
       <a class="btn secondary" href="<%= rolePath('/delivery-services') %>">Back</a>
     </div>
   </form>

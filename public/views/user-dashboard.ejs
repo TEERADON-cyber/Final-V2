@@ -124,19 +124,25 @@
         </thead>
         <tbody>
           <% deliveries.forEach((delivery) => { %>
-            <% const paid = String(delivery.status || "").toLowerCase() === "paid"; %>
+            <% const paymentStatusKey = String(delivery.payment_status || "").toLowerCase().trim() || (String(delivery.status || "").toLowerCase() === "paid" ? "paid" : "unpaid"); %>
+            <% const paid = paymentStatusKey === "paid"; %>
+            <% const methodKey = normalizePaymentMethod(delivery.payment_method) || "online_bank"; %>
+            <% const orderStatusKey = normalizeOrderStatus(delivery.order_status) || "processing"; %>
+            <% const isCodPending = methodKey === "cod" && orderStatusKey !== "delivered"; %>
             <tr>
               <td><%= delivery.delivery_id || "-" %></td>
               <td><%= delivery.package_id || "-" %></td>
               <td><%= formatTHB(delivery.amount) %></td>
               <td><%= delivery.due_date || "-" %></td>
-              <% const statusLabel = delivery.status || "-"; %>
-              <% const statusLower = statusLabel.toString().toLowerCase(); %>
-              <% const statusClass = statusLower === "paid" ? "badge-paid" : statusLower === "overdue" ? "badge-overdue" : statusLower === "unpaid" ? "badge-unpaid" : "badge-pending"; %>
+              <% const statusLabel = delivery.payment_status_label || formatPaymentStatus(paymentStatusKey); %>
+              <% const statusLower = paymentStatusKey; %>
+              <% const statusClass = statusLower === "paid" ? "badge-paid" : statusLower === "overdue" ? "badge-overdue" : statusLower === "unpaid" ? "badge-unpaid" : statusLower === "cancelled" ? "badge-overdue" : "badge-pending"; %>
               <td><span class="badge <%= statusClass %>"><%= statusLabel %></span></td>
               <td>
                 <% if (paid) { %>
                   <span class="muted">Paid</span>
+                <% } else if (isCodPending) { %>
+                  <span class="muted">COD Pending</span>
                 <% } else { %>
                   <a class="btn" href="<%= rolePath('/payments/' + delivery.delivery_id) %>">Pay Now</a>
                 <% } %>

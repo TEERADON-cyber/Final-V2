@@ -5,7 +5,7 @@
   <h2>Delivery Services</h2>
   <p>Total delivery services: <strong><%= list.length %></strong></p>
   <div class="actions">
-    <a class="btn" href="<%= rolePath('/create-delivery-service') %>">Create Delivery Service</a>
+    <a class="btn" href="<%= rolePath('/create-delivery-service') %>">Update Service Rates</a>
   </div>
 </section>
 
@@ -19,6 +19,7 @@
           <th>Service ID</th>
           <th>Service Name</th>
           <th>Price Rate (THB / kg)</th>
+          <th>Additional Charge (THB)</th>
         </tr>
       </thead>
       <tbody>
@@ -27,6 +28,7 @@
             <td><%= u.service_id || "-" %></td>
             <td><%= u.service_name || "-" %></td>
             <td><%= Number.isFinite(Number.parseFloat(u.price_rate)) ? formatTHB(Number.parseFloat(u.price_rate)) : "-" %></td>
+            <td><%= Number.isFinite(Number.parseFloat(u.additional_charge)) ? formatTHB(Number.parseFloat(u.additional_charge)) : formatTHB(0) %></td>
           </tr>
         <% }) %>
       </tbody>

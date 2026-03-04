@@ -6,6 +6,35 @@
   const serviceInfo = deliveryService || {};
   const account = accountUser || {};
   const invoicePayment = payment || null;
+  const orderStatusKey = normalizeOrderStatus(data.order_status) || "processing";
+  const methodKey = normalizePaymentMethod(
+    (invoicePayment && invoicePayment.payment_method) || data.payment_method
+  ) || "online_bank";
+  const paymentStatusKey = String(
+    (invoicePayment && invoicePayment.payment_status) || ""
+  ).toLowerCase().trim() || (
+    methodKey === "cod" && orderStatusKey !== "delivered"
+      ? "pending"
+      : (String(data.status || "").toLowerCase().trim() === "paid" ? "paid" : "unpaid")
+  );
+  const houseNumber = String(packageInfo.house_number || "").trim();
+  const villageNo = String(packageInfo.village_no || "").trim();
+  const soi = String(packageInfo.soi || "").trim();
+  const road = String(packageInfo.road || "").trim();
+  const subdistrict = String(packageInfo.subdistrict || "").trim();
+  const district = String(packageInfo.district || "").trim();
+  const province = String(packageInfo.province || "").trim();
+  const postalCode = String(packageInfo.postal_code || "").trim();
+  const line1Parts = [];
+  if (houseNumber) line1Parts.push(`House No. ${houseNumber}`);
+  if (villageNo) line1Parts.push(`Moo ${villageNo}`);
+  const addressLines = [];
+  if (line1Parts.length) addressLines.push(line1Parts.join(", "));
+  if (soi) addressLines.push(`Soi ${soi}`);
+  if (road) addressLines.push(`Road ${road}`);
+  if (subdistrict) addressLines.push(`Subdistrict ${subdistrict}`);
+  if (district) addressLines.push(`District ${district}`);
+  if (province || postalCode) addressLines.push(`${province}${province && postalCode ? " " : ""}${postalCode}`);
 %>
 
 <section class="card page-head">
@@ -22,9 +51,12 @@
 <section class="split">
   <article class="card">
     <h3>Account Holder</h3>
+    <p><strong>User ID:</strong> <%= account.user_id || account.id || "-" %></p>
     <p><strong>Name:</strong> <%= account.name || "-" %></p>
     <p><strong>Username:</strong> <%= accountUsername || "-" %></p>
     <p><strong>Email:</strong> <%= account.email || "-" %></p>
+    <p><strong>Phone:</strong> <%= account.phone || "-" %></p>
+    <p><strong>Role:</strong> <%= account.role || "-" %></p>
   </article>
 
   <article class="card">
@@ -32,28 +64,56 @@
     <p><strong>Generated:</strong> <%= generatedAt || "-" %></p>
     <p><strong>Delivery Date:</strong> <%= data.delivery_date || "-" %></p>
     <p><strong>Amount (THB):</strong> <%= formatTHB(data.amount) %></p>
+    <p><strong>Additional Charge:</strong> <%= formatTHB(data.additional_charge || 0) %></p>
     <p><strong>Due Date:</strong> <%= data.due_date || "-" %></p>
-    <p><strong>Status:</strong> <%= data.status || "-" %></p>
+    <p><strong>Order Status:</strong> <%= formatOrderStatus(orderStatusKey) %></p>
+    <p><strong>Payment Status:</strong> <%= formatPaymentStatus(paymentStatusKey) %></p>
   </article>
+</section>
+
+<section class="card">
+  <h3>Receiver Information</h3>
+  <p><strong>Receiver Name:</strong> <%= packageInfo.receiver_name || "-" %></p>
+  <p><strong>Receiver Phone:</strong> <%= packageInfo.receiver_phone || "-" %></p>
+  <p><strong>Address:</strong></p>
+  <% if (!addressLines.length) { %>
+    <p class="muted">-</p>
+  <% } else { %>
+    <% addressLines.forEach((line) => { %>
+      <p><%= line %></p>
+    <% }) %>
+  <% } %>
 </section>
 
 <section class="card">
   <h3>Service Information</h3>
   <p><strong>Package ID:</strong> <%= data.package_id || packageInfo.package_id || "-" %></p>
   <p><strong>Tracking Number:</strong> <%= packageInfo.tracking_number || packageInfo.package_reading || "-" %></p>
+  <p><strong>Package Weight:</strong> <%= packageInfo.weight || "-" %> kg</p>
+  <p><strong>Package Status:</strong> <%= packageInfo.package_status || "-" %></p>
   <p><strong>Delivery Service:</strong> <%= serviceInfo.service_name || "-" %></p>
+  <p><strong>Service Price Rate:</strong> <%= Number.isFinite(Number(serviceInfo.price_rate)) ? formatTHB(serviceInfo.price_rate) + " / kg" : "-" %></p>
+  <p><strong>Payment Method:</strong> <%= formatPaymentMethod(methodKey) %></p>
   <p><strong>Delivery Created:</strong> <%= data.created_at || "-" %></p>
 </section>
 
 <section class="card">
   <h3>Payment Information</h3>
   <% if (!invoicePayment) { %>
-    <div class="empty">No payment has been recorded for this delivery yet.</div>
+    <p><strong>Payment ID:</strong> -</p>
+    <p><strong>Method:</strong> <%= formatPaymentMethod(methodKey) %></p>
+    <p><strong>Status:</strong> <%= formatPaymentStatus(paymentStatusKey) %></p>
+    <p><strong>Payment Date:</strong> -</p>
+    <p><strong>Paid At:</strong> -</p>
+    <p><strong>Transaction Reference:</strong> -</p>
   <% } else { %>
     <p><strong>Payment ID:</strong> <%= invoicePayment.payment_id || "-" %></p>
-    <p><strong>Method:</strong> <%= invoicePayment.payment_method || "-" %></p>
+    <p><strong>Method:</strong> <%= formatPaymentMethod(invoicePayment.payment_method) %></p>
+    <p><strong>Status:</strong> <%= formatPaymentStatus(invoicePayment.payment_status || paymentStatusKey) %></p>
     <p><strong>Payment Date:</strong> <%= invoicePayment.payment_date || "-" %></p>
+    <p><strong>Paid At:</strong> <%= invoicePayment.paid_at || "-" %></p>
     <p><strong>Transaction Reference:</strong> <%= invoicePayment.transaction_ref || "-" %></p>
+    <p><strong>Payment User ID:</strong> <%= invoicePayment.user_id || "-" %></p>
   <% } %>
 </section>
 

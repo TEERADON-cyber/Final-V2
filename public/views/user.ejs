@@ -1,4 +1,4 @@
-<%- include("partials/layout-top", { title: "User Detail" }) %>
+<%- include("partials/layout-top", { title: "User Detail", bodyClass: printMode ? "print-mode" : "" }) %>
 
 <%
   const profile = user || {};
@@ -114,6 +114,9 @@
   <h2>User Detail</h2>
   <p>User ID: <strong><%= uid || "-" %></strong></p>
   <div class="actions">
+    <% if (uid && isAdmin) { %>
+      <a class="btn" href="<%= rolePath('/user/' + encodeURIComponent(String(uid))) %>?print=1" target="_blank" rel="noopener">Print / Save PDF</a>
+    <% } %>
     <% if (isAdmin) { %>
       <a class="btn secondary" href="<%= rolePath('/users') %>">Back to Users</a>
     <% } else { %>
@@ -325,19 +328,25 @@
             </thead>
             <tbody>
               <% packageDeliveries.forEach((b) => { %>
-                <% const paid = String(b.status || "").toLowerCase() === "paid"; %>
+                <% const paymentStatusKey = String(b.payment_status || "").toLowerCase().trim() || (String(b.status || "").toLowerCase() === "paid" ? "paid" : "unpaid"); %>
+                <% const paid = paymentStatusKey === "paid"; %>
+                <% const methodKey = normalizePaymentMethod(b.payment_method) || "online_bank"; %>
+                <% const orderStatusKey = normalizeOrderStatus(b.order_status) || "processing"; %>
+                <% const isCodPending = methodKey === "cod" && orderStatusKey !== "delivered"; %>
                 <tr>
                   <td><%= b.delivery_id || "-" %></td>
                   <td><%= b.delivery_date || "-" %></td>
                   <td><%= formatTHB(b.amount) %></td>
                   <td><%= b.due_date || "-" %></td>
-                  <% const statusLabel = b.status || "-"; %>
-                  <% const statusLower = statusLabel.toString().toLowerCase(); %>
-                  <% const statusClass = statusLower === "paid" ? "badge-paid" : statusLower === "overdue" ? "badge-overdue" : statusLower === "unpaid" ? "badge-unpaid" : "badge-pending"; %>
+                  <% const statusLabel = b.payment_status_label || formatPaymentStatus(paymentStatusKey); %>
+                  <% const statusLower = paymentStatusKey; %>
+                  <% const statusClass = statusLower === "paid" ? "badge-paid" : statusLower === "overdue" ? "badge-overdue" : statusLower === "unpaid" ? "badge-unpaid" : statusLower === "cancelled" ? "badge-overdue" : "badge-pending"; %>
                   <td><span class="badge <%= statusClass %>"><%= statusLabel %></span></td>
                   <td>
                     <% if (paid) { %>
                       <span class="muted">Paid</span>
+                    <% } else if (isCodPending) { %>
+                      <span class="muted">COD Pending</span>
                     <% } else { %>
                       <a class="btn" href="<%= rolePath('/payments/' + b.delivery_id) %>">Pay Now</a>
                     <% } %>
@@ -352,5 +361,15 @@
     <% }) %>
   <% } %>
 </section>
+
+<% if (printMode) { %>
+  <script>
+    window.addEventListener("load", function () {
+      setTimeout(function () {
+        try { window.print(); } catch (e) {}
+      }, 150);
+    });
+  </script>
+<% } %>
 
 <%- include("partials/layout-bottom") %>

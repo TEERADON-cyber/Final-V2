@@ -16,7 +16,10 @@
   const paymentStatus = payment
     ? String(payment.payment_status || "").toLowerCase().trim()
     : fallbackPaymentStatus;
-  const isPaid = paymentStatus === "paid" || String(data.status || "").toLowerCase().trim() === "paid";
+  const deliveryMarkedPaid = String(data.status || "").toLowerCase().trim() === "paid";
+  const isPaid = payment
+    ? paymentStatus === "paid"
+    : deliveryMarkedPaid;
   const isCodPending = deliveryMethod === "cod" && paymentStatus !== "paid";
 %>
 

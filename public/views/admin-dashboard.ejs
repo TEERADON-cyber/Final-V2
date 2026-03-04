@@ -152,7 +152,6 @@
               <th>Method</th>
               <th>Payment Status</th>
               <th>Date</th>
-              <th>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -168,16 +167,6 @@
                 </td>
                 <td><span class="badge <%= statusClass %>"><%= formatPaymentStatus(statusKey) %></span></td>
                 <td><%= p.payment_date || "-" %></td>
-                <td>
-                  <% if (statusKey === "pending_payment") { %>
-                    <form method="post" action="<%= rolePath('/payments/' + p.payment_id + '/approve') %>">
-                      <input type="hidden" name="return_to" value="<%= returnTo %>">
-                      <button class="btn secondary" type="submit">Approve</button>
-                    </form>
-                  <% } else { %>
-                    <span class="muted">-</span>
-                  <% } %>
-                </td>
               </tr>
             <% }) %>
           </tbody>

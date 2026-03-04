@@ -24,7 +24,7 @@
           <th>Method</th>
           <th>Payment Status</th>
           <th>Date</th>
-          <th>Transaction Ref</th>
+          <th>Cost Amount</th>
         </tr>
       </thead>
       <tbody>
@@ -32,13 +32,14 @@
           <% const methodKey = normalizePaymentMethod(p.payment_method) || "online_bank"; %>
           <% const statusKey = String(p.payment_status || "").toLowerCase().trim() || "pending_payment"; %>
           <% const statusClass = statusKey === "paid" ? "badge-paid" : statusKey === "pending" ? "badge-pending" : statusKey === "cancelled" || statusKey === "refunded" ? "badge-overdue" : "badge-unpaid"; %>
+          <% const paidShippingFee = statusKey === "paid" ? formatTHB(p.cost_amount) : "-"; %>
           <tr>
             <td><%= p.payment_id || "-" %></td>
             <td><%= p.delivery_id || "-" %></td>
             <td><span class="badge badge-method badge-method-<%= methodKey %>"><%= formatPaymentMethod(methodKey) %></span></td>
             <td><span class="badge <%= statusClass %>"><%= formatPaymentStatus(statusKey) %></span></td>
             <td><%= p.payment_date || "-" %></td>
-            <td><%= p.transaction_ref || "-" %></td>
+            <td><%= paidShippingFee %></td>
           </tr>
         <% }) %>
       </tbody>
