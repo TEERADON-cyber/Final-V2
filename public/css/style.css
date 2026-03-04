@@ -154,6 +154,24 @@ html.dark-mode .stat-card {
   border-color: rgba(71, 85, 105, 0.62);
 }
 
+html.dark-mode .stat-card h3 {
+  color: #dbeafe;
+  border-color: rgba(56, 189, 248, 0.38);
+  background: rgba(30, 41, 59, 0.78);
+}
+
+html.dark-mode .stat-card .stat-sub {
+  color: #a7b7cb;
+}
+
+html.dark-mode .card p,
+html.dark-mode .page-head p,
+html.dark-mode .muted,
+html.dark-mode .report-subline,
+html.dark-mode .field-inline {
+  color: #b4c1d2;
+}
+
 html.dark-mode .form-section {
   background: rgba(2, 6, 23, 0.6);
   border-color: rgba(71, 85, 105, 0.58);
