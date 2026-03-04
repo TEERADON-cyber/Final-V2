@@ -71,7 +71,6 @@
           <label for="payment_method">Payment Method</label>
           <select id="payment_method" name="payment_method" required>
             <option value="online_bank" <%= selectedMethod === "online_bank" ? "selected" : "" %>>Online Bank</option>
-            <option value="cod" <%= selectedMethod === "cod" ? "selected" : "" %>>Cash on Delivery (COD)</option>
             <option value="credit_card" <%= selectedMethod === "credit_card" ? "selected" : "" %>>Credit Card</option>
             <option value="promptpay" <%= selectedMethod === "promptpay" ? "selected" : "" %>>PromptPay</option>
           </select>

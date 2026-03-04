@@ -22,7 +22,6 @@ const monthLabelFormatter = new Intl.DateTimeFormat("en-US", {
 const allowedNoticeTypes = new Set(["info", "success", "warning", "error"]);
 const paymentMethodLabels = {
   online_bank: "Online Bank",
-  cod: "Cash on Delivery (COD)",
   credit_card: "Credit Card",
   promptpay: "PromptPay"
 };
@@ -40,7 +39,7 @@ const orderStatusLabels = {
   delivered: "Delivered",
   cancelled: "Cancelled"
 };
-const paymentMethodOrder = ["online_bank", "cod", "credit_card", "promptpay"];
+const paymentMethodOrder = ["online_bank", "credit_card", "promptpay"];
 const orderStatusOrder = ["processing", "in_transit", "delivered"];
 const defaultCustomerDeliveryDueDaysInput = Number.parseInt(
   process.env.CUSTOMER_DEFAULT_DELIVERY_DUE_DAYS || "7",
@@ -75,9 +74,9 @@ function normalizePaymentMethod(rawMethod) {
     bank: "online_bank",
     "online bank": "online_bank",
     online_bank: "online_bank",
-    cash: "cod",
-    cash_on_delivery: "cod",
-    cod: "cod",
+    cash: "online_bank",
+    cash_on_delivery: "online_bank",
+    cod: "online_bank",
     card: "credit_card",
     "credit card": "credit_card",
     credit_card: "credit_card",
