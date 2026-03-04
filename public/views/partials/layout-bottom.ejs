@@ -38,9 +38,15 @@
         var startX = 0;
         var startScrollLeft = 0;
 
+        function isInteractiveElement(target) {
+          if (!target || typeof target.closest !== "function") return false;
+          return !!target.closest("a, button, input, select, textarea, label, [role='button'], [contenteditable='true']");
+        }
+
         el.addEventListener("pointerdown", function (event) {
           // Only handle primary button / touch / pen
           if (event.pointerType === "mouse" && event.button !== 0) return;
+          if (isInteractiveElement(event.target)) return;
           isDown = true;
           startX = event.clientX;
           startScrollLeft = el.scrollLeft;
