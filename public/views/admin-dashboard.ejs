@@ -1,0 +1,190 @@
+<%- include("partials/layout-top", { title: "Admin Dashboard", showAdminNav: true }) %>
+
+<%
+  const data = summary || {};
+  const users = Array.isArray(recentUsers) ? recentUsers : [];
+  const payments = Array.isArray(recentPayments) ? recentPayments : [];
+  const urgent = Array.isArray(urgentDeliveries) ? urgentDeliveries : [];
+  const selectedMethod = selectedPaymentMethod || "all";
+  const methodOptions = Array.isArray(paymentMethodOptions) ? paymentMethodOptions : [];
+  const returnTo = selectedMethod !== "all"
+    ? rolePath('/admin-dashboard?paymentMethod=' + encodeURIComponent(selectedMethod))
+    : rolePath('/admin-dashboard');
+%>
+
+<section class="card page-head">
+  <h2>Admin Dashboard</h2>
+  <p>Control center for users, delivery, packages, and payments.</p>
+  <div class="actions">
+    <a class="btn" href="<%= rolePath('/users') %>">Manage Users</a>
+    <a class="btn secondary" href="<%= rolePath('/packages') %>">Manage Packages</a>
+    <a class="btn secondary" href="<%= rolePath('/deliveries') %>">Manage Deliveries</a>
+    <a class="btn secondary" href="<%= rolePath('/delivery-services') %>">Manage Delivery Services</a>
+  </div>
+</section>
+
+<section class="stat-grid">
+  <article class="stat-card">
+    <h3>Users</h3>
+    <p class="stat-value"><%= data.usersCount || 0 %></p>
+    <p class="stat-sub">Accounts registered in the system</p>
+  </article>
+  <article class="stat-card">
+    <h3>Packages</h3>
+    <p class="stat-value"><%= data.packagesCount || 0 %></p>
+    <p class="stat-sub">Packages currently tracked</p>
+  </article>
+  <article class="stat-card">
+    <h3>Delivery Services</h3>
+    <p class="stat-value"><%= data.deliveryServicesCount || 0 %></p>
+    <p class="stat-sub">Configured service options</p>
+  </article>
+  <article class="stat-card">
+    <h3>Deliveries</h3>
+    <p class="stat-value"><%= data.deliveriesCount || 0 %></p>
+    <p class="stat-sub">Paid: <%= data.paidDeliveriesCount || 0 %>, Unpaid: <%= data.unpaidDeliveriesCount || 0 %>, Overdue: <%= data.overdueDeliveriesCount || 0 %></p>
+  </article>
+  <article class="stat-card">
+    <h3>Payments</h3>
+    <p class="stat-value"><%= data.paymentsCount || 0 %></p>
+    <p class="stat-sub">Recorded payment transactions</p>
+  </article>
+  <article class="stat-card">
+    <h3>Total Delivered</h3>
+    <p class="stat-value"><%= formatTHB(data.totalDeliveredAmount || 0) %></p>
+    <p class="stat-sub">Cumulative delivered value</p>
+  </article>
+</section>
+
+<section class="card">
+  <h3>Urgent Deliveries (Unpaid / Overdue)</h3>
+  <% if (!urgent.length) { %>
+    <div class="empty">No urgent deliveries right now.</div>
+  <% } else { %>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Delivery ID</th>
+            <th>Package ID</th>
+            <th>Amount (THB)</th>
+            <th>Due Date</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% urgent.forEach((delivery) => { %>
+            <tr>
+              <td><%= delivery.delivery_id || "-" %></td>
+              <td><%= delivery.package_id || "-" %></td>
+              <td><%= formatTHB(delivery.amount) %></td>
+              <td><%= delivery.due_date || "-" %></td>
+              <% const statusLabel = delivery.status || "-"; %>
+              <% const statusLower = statusLabel.toString().toLowerCase(); %>
+              <% const statusClass = statusLower === "paid" ? "badge-paid" : statusLower === "overdue" ? "badge-overdue" : statusLower === "unpaid" ? "badge-unpaid" : "badge-pending"; %>
+              <td><span class="badge <%= statusClass %>"><%= statusLabel %></span></td>
+              <td><a class="btn secondary" href="<%= rolePath('/pay-delivery/' + delivery.delivery_id) %>">Open</a></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>
+
+<section class="split" id="reports">
+  <article class="card">
+    <h3>Recent Users</h3>
+    <% if (!users.length) { %>
+      <div class="empty">No users found.</div>
+    <% } else { %>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Role</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% users.forEach((u) => { %>
+            <tr>
+              <td><%= u.user_id || "-" %></td>
+              <td><%= u.name || "-" %></td>
+              <td><%= u.email || "-" %></td>
+              <td><%= u.role || "user" %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    <% } %>
+  </article>
+
+  <article class="card">
+    <h3>Recent Payments</h3>
+    <form class="actions admin-payment-filter" method="get" action="<%= rolePath('/admin-dashboard') %>">
+      <label class="field-inline" for="paymentMethodFilter">
+        <span>Method</span>
+        <select id="paymentMethodFilter" name="paymentMethod">
+          <option value="all" <%= selectedMethod === "all" ? "selected" : "" %>>All Methods</option>
+          <% methodOptions.forEach((method) => { %>
+            <option value="<%= method.value %>" <%= selectedMethod === method.value ? "selected" : "" %>><%= method.label %></option>
+          <% }) %>
+        </select>
+      </label>
+      <button class="btn secondary" type="submit">Apply Filter</button>
+      <% if (selectedMethod !== "all") { %>
+        <a class="btn secondary" href="<%= rolePath('/admin-dashboard') %>">Reset</a>
+      <% } %>
+    </form>
+
+    <% if (!payments.length) { %>
+      <div class="empty">No payments found.</div>
+    <% } else { %>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Payment ID</th>
+              <th>Delivery ID</th>
+              <th>Method</th>
+              <th>Payment Status</th>
+              <th>Date</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% payments.forEach((p) => { %>
+              <% const methodKey = normalizePaymentMethod(p.payment_method) || "online_bank"; %>
+              <% const statusKey = String(p.payment_status || "").toLowerCase().trim() || "pending_payment"; %>
+              <% const statusClass = statusKey === "paid" ? "badge-paid" : statusKey === "pending" ? "badge-pending" : statusKey === "cancelled" || statusKey === "refunded" ? "badge-overdue" : "badge-unpaid"; %>
+              <tr>
+                <td><%= p.payment_id || "-" %></td>
+                <td><%= p.delivery_id || "-" %></td>
+                <td>
+                  <span class="badge badge-method badge-method-<%= methodKey %>"><%= formatPaymentMethod(methodKey) %></span>
+                </td>
+                <td><span class="badge <%= statusClass %>"><%= formatPaymentStatus(statusKey) %></span></td>
+                <td><%= p.payment_date || "-" %></td>
+                <td>
+                  <% if (statusKey === "pending_payment") { %>
+                    <form method="post" action="<%= rolePath('/payments/' + p.payment_id + '/approve') %>">
+                      <input type="hidden" name="return_to" value="<%= returnTo %>">
+                      <button class="btn secondary" type="submit">Approve</button>
+                    </form>
+                  <% } else { %>
+                    <span class="muted">-</span>
+                  <% } %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </article>
+</section>
+
+<%- include("partials/layout-bottom") %>

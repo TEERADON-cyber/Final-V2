@@ -1,0 +1,356 @@
+<%- include("partials/layout-top", { title: "User Detail" }) %>
+
+<%
+  const profile = user || {};
+  const uid = profile.user_id || profile.id;
+  const userPackages = Array.isArray(packages) ? packages : [];
+  const allPayments = Array.isArray(payments) ? payments : [];
+  const monthReports = Array.isArray(monthlyReport) ? monthlyReport : [];
+  const reportGeneratedAt = generatedAt || "-";
+  const formatPercent = (value) => `${Number.isFinite(Number(value)) ? Number(value).toFixed(1) : "0.0"}%`;
+  const formatDueWindow = (start, end) => {
+    if (!start && !end) return "-";
+    if (start && end && start !== end) return `${start} -> ${end}`;
+    return start || end;
+  };
+  const toNumber = (value) => {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const parseDateValue = (value) => {
+    const text = String(value || "").trim();
+    if (!text) return null;
+    const ts = new Date(text).getTime();
+    if (!Number.isFinite(ts)) return null;
+    return { text, ts };
+  };
+  const deliveryIds = [];
+  const allUserDeliveries = [];
+  userPackages.forEach((m) => {
+    const packageDeliveries = Array.isArray(m.deliveries) ? m.deliveries : [];
+    packageDeliveries.forEach((b) => {
+      const bid = String(b.delivery_id || b.id || "");
+      if (bid) deliveryIds.push(bid);
+      allUserDeliveries.push(b);
+    });
+  });
+  const userPayments = allPayments.filter((p) => deliveryIds.includes(String(p.delivery_id || "")));
+  const serviceNames = [...new Set(
+    userPackages
+      .map((package) => String(package.service_name || "").trim())
+      .filter((name) => !!name)
+  )];
+  const serviceSummary = serviceNames.length ? serviceNames.join(", ") : "-";
+  const dueDateWindow = allUserDeliveries.reduce((window, delivery) => {
+    const parsedDate = parseDateValue(delivery.due_date);
+    if (!parsedDate) return window;
+    if (window.startTs === null || parsedDate.ts < window.startTs) {
+      window.startTs = parsedDate.ts;
+      window.start = parsedDate.text;
+    }
+    if (window.endTs === null || parsedDate.ts > window.endTs) {
+      window.endTs = parsedDate.ts;
+      window.end = parsedDate.text;
+    }
+    return window;
+  }, { start: null, end: null, startTs: null, endTs: null });
+  const overallDeliveryRange = allUserDeliveries.reduce((range, delivery) => {
+    const amount = toNumber(delivery.amount);
+    if (range.min === null || amount < range.min) range.min = amount;
+    if (range.max === null || amount > range.max) range.max = amount;
+    return range;
+  }, { min: null, max: null });
+  const latestPayment = userPayments.reduce((latest, payment) => {
+    const parsedDate = parseDateValue(payment.payment_date);
+    if (!parsedDate) return latest;
+    if (!latest || parsedDate.ts > latest.ts) {
+      return {
+        ts: parsedDate.ts,
+        text: parsedDate.text,
+        method: String(payment.payment_method || "").trim() || "-",
+        deliveryId: String(payment.delivery_id || "").trim() || "-"
+      };
+    }
+    return latest;
+  }, null);
+  const paymentMethods = [...new Set(
+    userPayments
+      .map((payment) => String(payment.payment_method || "").trim())
+      .filter((method) => !!method)
+  )];
+  const reportTotals = monthReports.reduce((totals, report) => {
+    totals.totalDeliveries += toNumber(report.deliveriesCount);
+    totals.paidDeliveries += toNumber(report.paidDeliveriesCount);
+    totals.unpaidDeliveries += toNumber(report.unpaidDeliveriesCount);
+    totals.overdueDeliveries += toNumber(report.overdueDeliveriesCount);
+    totals.payments += toNumber(report.paymentsCount);
+    totals.totalAmount += toNumber(report.totalAmount);
+    totals.paidAmount += toNumber(report.paidAmount);
+    totals.outstandingAmount += toNumber(report.outstandingAmount);
+    return totals;
+  }, {
+    totalDeliveries: 0,
+    paidDeliveries: 0,
+    unpaidDeliveries: 0,
+    overdueDeliveries: 0,
+    payments: 0,
+    totalAmount: 0,
+    paidAmount: 0,
+    outstandingAmount: 0
+  });
+  const overallPaidRate = reportTotals.totalDeliveries ? ((reportTotals.paidDeliveries / reportTotals.totalDeliveries) * 100) : 0;
+  const overallCollectionRate = reportTotals.totalAmount ? ((reportTotals.paidAmount / reportTotals.totalAmount) * 100) : 0;
+  const averageMonthlyTotal = monthReports.length ? (reportTotals.totalAmount / monthReports.length) : 0;
+  const newestMonth = monthReports.length
+    ? (monthReports[0].monthLabel || monthReports[0].monthKey || "-")
+    : "-";
+  const oldestMonth = monthReports.length
+    ? (monthReports[monthReports.length - 1].monthLabel || monthReports[monthReports.length - 1].monthKey || "-")
+    : "-";
+  const reportPeriodLabel = monthReports.length > 1 ? `${oldestMonth} -> ${newestMonth}` : newestMonth;
+%>
+
+<section class="card page-head">
+  <h2>User Detail</h2>
+  <p>User ID: <strong><%= uid || "-" %></strong></p>
+  <div class="actions">
+    <% if (isAdmin) { %>
+      <a class="btn secondary" href="<%= rolePath('/users') %>">Back to Users</a>
+    <% } else { %>
+      <a class="btn secondary" href="<%= rolePath('/deliveries') %>">Back to Deliveries</a>
+    <% } %>
+    <% if (uid && isAdmin) { %>
+      <a class="btn" href="<%= rolePath('/update/' + uid) %>">Edit User</a>
+    <% } %>
+  </div>
+</section>
+
+<section class="split">
+  <article class="card">
+    <h3>Profile</h3>
+    <p><strong>Name:</strong> <%= profile.name || "-" %></p>
+    <p><strong>Email:</strong> <%= profile.email || "-" %></p>
+    <p><strong>Phone:</strong> <%= profile.phone || "-" %></p>
+    <p><strong>Role:</strong> <%= profile.role || "user" %></p>
+    <p><strong>Created:</strong> <%= profile.created_at || "-" %></p>
+  </article>
+
+  <article class="card">
+    <h3>Payments for This User</h3>
+    <% if (!userPayments.length) { %>
+      <div class="empty">No payments linked to this user's deliveries.</div>
+    <% } else { %>
+      <table>
+        <thead>
+          <tr>
+            <th>Payment ID</th>
+            <th>Delivery ID</th>
+            <th>Method</th>
+            <th>Date</th>
+            <th>Reference</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% userPayments.forEach((p) => { %>
+            <tr>
+              <td><%= p.payment_id || "-" %></td>
+              <td><%= p.delivery_id || "-" %></td>
+              <td><%= p.payment_method || "-" %></td>
+              <td><%= p.payment_date || "-" %></td>
+              <td><%= p.transaction_ref || "-" %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    <% } %>
+  </article>
+</section>
+
+<section class="card monthly-report-section">
+  <h3>Monthly Delivery Report</h3>
+  <p><strong>User:</strong> <%= profile.name || "-" %> (ID: <%= uid || "-" %>)</p>
+  <p><strong>Generated:</strong> <%= reportGeneratedAt %></p>
+  <div class="report-meta-grid">
+    <div class="report-meta-item">
+      <span class="report-meta-label">Username</span>
+      <strong class="report-meta-value"><%= profile.username || "-" %></strong>
+    </div>
+    <div class="report-meta-item">
+      <span class="report-meta-label">Email</span>
+      <strong class="report-meta-value"><%= profile.email || "-" %></strong>
+    </div>
+    <div class="report-meta-item">
+      <span class="report-meta-label">Phone</span>
+      <strong class="report-meta-value"><%= profile.phone || "-" %></strong>
+    </div>
+    <div class="report-meta-item">
+      <span class="report-meta-label">Packages / Delivery Services</span>
+      <strong class="report-meta-value"><%= userPackages.length %> / <%= serviceNames.length %></strong>
+      <span class="report-meta-hint"><%= serviceSummary %></span>
+    </div>
+    <div class="report-meta-item">
+      <span class="report-meta-label">Report Months</span>
+      <strong class="report-meta-value"><%= monthReports.length %></strong>
+    </div>
+    <div class="report-meta-item">
+      <span class="report-meta-label">Delivery Period</span>
+      <strong class="report-meta-value"><%= reportPeriodLabel %></strong>
+    </div>
+    <div class="report-meta-item">
+      <span class="report-meta-label">Due Date Window</span>
+      <strong class="report-meta-value"><%= formatDueWindow(dueDateWindow.start, dueDateWindow.end) %></strong>
+    </div>
+    <div class="report-meta-item">
+      <span class="report-meta-label">Latest Payment</span>
+      <strong class="report-meta-value"><%= latestPayment ? `${latestPayment.text} (${latestPayment.method})` : "-" %></strong>
+      <span class="report-meta-hint">Delivery ID: <%= latestPayment ? latestPayment.deliveryId : "-" %></span>
+    </div>
+  </div>
+  <% if (!monthReports.length) { %>
+    <div class="empty">No monthly delivery data is available for this user.</div>
+  <% } else { %>
+    <div class="report-kpi-grid">
+      <div class="report-kpi-item">
+        <span class="report-kpi-label">Total Deliveries</span>
+        <strong class="report-kpi-value"><%= reportTotals.totalDeliveries %></strong>
+      </div>
+      <div class="report-kpi-item">
+        <span class="report-kpi-label">Paid / Open</span>
+        <strong class="report-kpi-value"><%= reportTotals.paidDeliveries %> / <%= reportTotals.unpaidDeliveries + reportTotals.overdueDeliveries %></strong>
+      </div>
+      <div class="report-kpi-item">
+        <span class="report-kpi-label">Overdue Deliveries</span>
+        <strong class="report-kpi-value"><%= reportTotals.overdueDeliveries %></strong>
+      </div>
+      <div class="report-kpi-item">
+        <span class="report-kpi-label">Payments Logged</span>
+        <strong class="report-kpi-value"><%= reportTotals.payments %></strong>
+      </div>
+      <div class="report-kpi-item">
+        <span class="report-kpi-label">Total Amount</span>
+        <strong class="report-kpi-value"><%= formatTHB(reportTotals.totalAmount) %></strong>
+      </div>
+      <div class="report-kpi-item">
+        <span class="report-kpi-label">Collected</span>
+        <strong class="report-kpi-value"><%= formatTHB(reportTotals.paidAmount) %></strong>
+      </div>
+      <div class="report-kpi-item">
+        <span class="report-kpi-label">Outstanding</span>
+        <strong class="report-kpi-value"><%= formatTHB(reportTotals.outstandingAmount) %></strong>
+      </div>
+      <div class="report-kpi-item">
+        <span class="report-kpi-label">Avg Monthly Charge</span>
+        <strong class="report-kpi-value"><%= formatTHB(averageMonthlyTotal) %></strong>
+      </div>
+      <div class="report-kpi-item">
+        <span class="report-kpi-label">Delivery Amount Range</span>
+        <strong class="report-kpi-value">
+          <%= overallDeliveryRange.min === null ? "-" : `${formatTHB(overallDeliveryRange.min)} - ${formatTHB(overallDeliveryRange.max)}` %>
+        </strong>
+      </div>
+      <div class="report-kpi-item">
+        <span class="report-kpi-label">Paid / Collected Rate</span>
+        <strong class="report-kpi-value"><%= formatPercent(overallPaidRate) %> / <%= formatPercent(overallCollectionRate) %></strong>
+        <span class="report-meta-hint"><%= paymentMethods.length ? paymentMethods.join(", ") : "No payment methods used" %></span>
+      </div>
+    </div>
+    <div class="billing-report-wrap">
+      <table class="billing-report-table">
+        <thead>
+          <tr>
+            <th>Delivery Date</th>
+            <th class="numeric">Total Deliveries</th>
+            <th class="numeric">Paid</th>
+            <th class="numeric">Unpaid</th>
+            <th class="numeric">Overdue</th>
+            <th class="numeric">Payments</th>
+            <th class="numeric">Total Amount (THB)</th>
+            <th class="numeric">Paid Amount (THB)</th>
+            <th class="numeric">Outstanding (THB)</th>
+            <th class="numeric">Avg Delivery (THB)</th>
+            <th class="numeric">Paid / Collected</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% monthReports.forEach((report) => { %>
+            <tr>
+              <td>
+                <%= report.monthLabel || report.monthKey || "-" %>
+                <span class="report-subline">Due: <%= formatDueWindow(report.dueWindowStart, report.dueWindowEnd) %></span>
+                <span class="report-subline">Range: <%= formatTHB(report.minDeliveryAmount) %> - <%= formatTHB(report.maxDeliveryAmount) %></span>
+              </td>
+              <td class="numeric"><%= report.deliveriesCount || 0 %></td>
+              <td class="numeric"><%= report.paidDeliveriesCount || 0 %></td>
+              <td class="numeric"><%= report.unpaidDeliveriesCount || 0 %></td>
+              <td class="numeric"><%= report.overdueDeliveriesCount || 0 %></td>
+              <td class="numeric"><%= report.paymentsCount || 0 %></td>
+              <td class="numeric"><%= formatTHB(report.totalAmount) %></td>
+              <td class="numeric"><%= formatTHB(report.paidAmount) %></td>
+              <td class="numeric"><%= formatTHB(report.outstandingAmount) %></td>
+              <td class="numeric"><%= formatTHB(report.avgDeliveryAmount) %></td>
+              <td class="numeric"><%= formatPercent(report.paidRate) %> / <%= formatPercent(report.collectionRate) %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>
+
+<section class="card">
+  <h3>Packages and Deliveries</h3>
+  <% if (!userPackages.length) { %>
+    <div class="empty">This user has no packages.</div>
+  <% } else { %>
+    <% userPackages.forEach((m) => { %>
+      <article class="card">
+        <p><strong>Package ID:</strong> <%= m.package_id || "-" %></p>
+        <p><strong>Tracking Number:</strong> <%= m.tracking_number || m.package_reading || "-" %></p>
+        <p><strong>Delivery Service:</strong> <%= m.service_name || "-" %></p>
+        <% const packageDeliveries = Array.isArray(m.deliveries) ? m.deliveries : []; %>
+        <% if (!packageDeliveries.length) { %>
+          <div class="empty">No deliveries for this package.</div>
+        <% } else { %>
+          <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Delivery ID</th>
+                <th>Date</th>
+                <th>Amount (THB)</th>
+                <th>Due Date</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% packageDeliveries.forEach((b) => { %>
+                <% const paid = String(b.status || "").toLowerCase() === "paid"; %>
+                <tr>
+                  <td><%= b.delivery_id || "-" %></td>
+                  <td><%= b.delivery_date || "-" %></td>
+                  <td><%= formatTHB(b.amount) %></td>
+                  <td><%= b.due_date || "-" %></td>
+                  <% const statusLabel = b.status || "-"; %>
+                  <% const statusLower = statusLabel.toString().toLowerCase(); %>
+                  <% const statusClass = statusLower === "paid" ? "badge-paid" : statusLower === "overdue" ? "badge-overdue" : statusLower === "unpaid" ? "badge-unpaid" : "badge-pending"; %>
+                  <td><span class="badge <%= statusClass %>"><%= statusLabel %></span></td>
+                  <td>
+                    <% if (paid) { %>
+                      <span class="muted">Paid</span>
+                    <% } else { %>
+                      <a class="btn" href="<%= rolePath('/payments/' + b.delivery_id) %>">Pay Now</a>
+                    <% } %>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+          </div>
+        <% } %>
+      </article>
+    <% }) %>
+  <% } %>
+</section>
+
+<%- include("partials/layout-bottom") %>

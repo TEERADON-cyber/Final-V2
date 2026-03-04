@@ -1,0 +1,42 @@
+<%- include("partials/layout-top", { title: "Login" }) %>
+
+<section class="card page-head">
+  <h2>Welcome back</h2>
+  <p>Sign in to manage deliveries, payments, and users.</p>
+</section>
+
+<section class="card">
+  <div class="form-grid">
+    <div>
+      <% if (error) { %>
+        <p class="muted"><%= error %></p>
+      <% } %>
+
+      <form method="post" action="/login">
+        <input type="hidden" name="next" value="<%= next || '/' %>">
+
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" required placeholder="admin@local">
+        </div>
+
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" required placeholder="Enter password">
+        </div>
+
+        <div class="actions stacked">
+          <button class="btn" type="submit">Login</button>
+          <a class="btn secondary" href="/register">Create a new account</a>
+        </div>
+      </form>
+    </div>
+
+    <aside class="empty-state">
+      <h3>Faster postal workflows</h3>
+      <p>Track packages, manage user accounts, and keep an eye on what’s overdue from a single dashboard.</p>
+    </aside>
+  </div>
+</section>
+
+<%- include("partials/layout-bottom") %>

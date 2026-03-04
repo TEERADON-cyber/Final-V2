@@ -1,0 +1,103 @@
+<%- include("partials/layout-top", { title: "Deliveries" }) %>
+
+<% const list = Array.isArray(deliveries) ? deliveries : []; %>
+<section class="card page-head">
+  <h2>Deliveries</h2>
+  <p>Total deliveries: <strong><%= list.length %></strong></p>
+  <% if (message) { %>
+    <p class="muted"><%= message %></p>
+  <% } %>
+  <% if (isAdmin) { %>
+    <div class="actions">
+      <a class="btn" href="<%= rolePath('/create-delivery') %>">Create Delivery</a>
+    </div>
+  <% } %>
+</section>
+
+<section class="card">
+  <% if (!list.length) { %>
+    <div class="empty">No deliveries found.</div>
+  <% } else { %>
+    <table>
+      <thead>
+        <tr>
+          <th>Delivery ID</th>
+          <th>Tracking No.</th>
+          <th>Receiver</th>
+          <th>Package ID</th>
+          <th>Delivery Date</th>
+          <th>Amount (THB)</th>
+          <th>Due Date</th>
+          <th>Order Status</th>
+          <th>Status</th>
+          <th>Created</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% list.forEach((b) => { %>
+          <% const paymentStatusKey = String(b.payment_status || "").toLowerCase().trim() || (String(b.status || "").toLowerCase() === "paid" ? "paid" : "unpaid"); %>
+          <% const isPaid = paymentStatusKey === "paid"; %>
+          <% const isUnpaid = paymentStatusKey === "unpaid"; %>
+          <% const isCancelledPayment = paymentStatusKey === "cancelled" || paymentStatusKey === "refunded"; %>
+          <% const methodKey = normalizePaymentMethod(b.payment_method) || "online_bank"; %>
+          <% const packageStatusKey = String(b.package_status || "active").toLowerCase().trim(); %>
+          <% const orderStatusKey = normalizeOrderStatus(b.order_status) || "processing"; %>
+          <% const orderStatusClass = orderStatusKey === "delivered" ? "badge-paid" : orderStatusKey === "in_transit" ? "badge-pending" : orderStatusKey === "cancelled" ? "badge-overdue" : "badge-unpaid"; %>
+          <% const canCancelAfterPayment = !isAdmin && isPaid && methodKey !== "cod" && orderStatusKey === "processing" && packageStatusKey !== "cancelled"; %>
+          <tr>
+            <td><%= b.delivery_id || "-" %></td>
+            <td><%= b.tracking_number || "-" %></td>
+            <td><%= b.receiver_name || "-" %></td>
+            <td><%= b.package_id || "-" %></td>
+            <td><%= b.delivery_date || "-" %></td>
+            <td><%= formatTHB(b.amount) %></td>
+            <td><%= b.due_date || "-" %></td>
+            <td><span class="badge <%= orderStatusClass %>"><%= formatOrderStatus(orderStatusKey) %></span></td>
+            <% const statusLabel = b.status || "-"; %>
+            <% const statusLower = statusLabel.toString().toLowerCase(); %>
+            <% const statusClass = statusLower === "paid" ? "badge-paid" : statusLower === "overdue" ? "badge-overdue" : statusLower === "unpaid" ? "badge-unpaid" : statusLower === "cancelled" ? "badge-overdue" : "badge-pending"; %>
+            <td><span class="badge <%= statusClass %>"><%= statusLabel %></span></td>
+            <td><%= b.created_at || "-" %></td>
+            <td>
+              <div class="actions table-row-actions">
+                <a class="btn secondary" href="<%= rolePath('/invoice/' + encodeURIComponent(String(b.delivery_id || ''))) %>">Invoice</a>
+                <% if (isAdmin && packageStatusKey !== "cancelled") { %>
+                  <form class="table-row-form" method="post" action="<%= rolePath('/deliveries/' + b.delivery_id + '/order-status') %>">
+                    <input type="hidden" name="return_to" value="<%= rolePath('/deliveries') %>">
+                    <label class="field-inline" for="order-status-<%= b.delivery_id %>">
+                      <span>Order Status</span>
+                      <select id="order-status-<%= b.delivery_id %>" name="order_status">
+                        <% (orderStatusOptions || []).forEach((option) => { %>
+                          <option value="<%= option.value %>" <%= option.value === orderStatusKey ? "selected" : "" %>><%= option.label %></option>
+                        <% }) %>
+                      </select>
+                    </label>
+                    <button class="btn secondary" type="submit">Update</button>
+                  </form>
+                <% } else if (isAdmin && packageStatusKey === "cancelled") { %>
+                  <span class="muted">Shipping Blocked</span>
+                <% } else if (packageStatusKey === "cancelled" || isCancelledPayment) { %>
+                  <span class="muted">Cancelled</span>
+                <% } else if (canCancelAfterPayment) { %>
+                  <form class="table-row-form" method="post" action="<%= rolePath('/deliveries/' + b.delivery_id + '/cancel') %>" onsubmit="return confirm('Cancel this delivery?');">
+                    <input type="hidden" name="return_to" value="<%= rolePath('/deliveries') %>">
+                    <button class="btn secondary" type="submit">Cancel</button>
+                  </form>
+                <% } else if (isPaid) { %>
+                  <span class="muted">Paid</span>
+                <% } else if (isUnpaid) { %>
+                  <a class="btn" href="<%= rolePath('/payments/' + b.delivery_id) %>">Pay Now</a>
+                <% } else { %>
+                  <span class="muted"><%= formatPaymentStatus(paymentStatusKey) %></span>
+                <% } %>
+              </div>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</section>
+
+<%- include("partials/layout-bottom") %>

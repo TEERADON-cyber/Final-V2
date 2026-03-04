@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Flower logo">
+  <defs>
+    <linearGradient id="petal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#06b6d4"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#22c55e"/>
+      <stop offset="1" stop-color="#16a34a"/>
+    </linearGradient>
+  </defs>
+
+  <!-- subtle base -->
+  <circle cx="32" cy="32" r="30" fill="#ffffff" opacity="0.0"/>
+
+  <!-- petals -->
+  <g fill="url(#petal)" stroke="rgba(17,24,39,0.12)" stroke-width="1">
+    <path d="M32 10c6 0 10 5 10 11s-4 9-10 9-10-3-10-9S26 10 32 10z"/>
+    <path d="M54 32c0 6-5 10-11 10s-9-4-9-10 3-10 9-10 11 4 11 10z"/>
+    <path d="M32 54c-6 0-10-5-10-11s4-9 10-9 10 3 10 9-4 11-10 11z"/>
+    <path d="M10 32c0-6 5-10 11-10s9 4 9 10-3 10-9 10-11-4-11-10z"/>
+    <path d="M46.5 17.5c4.3 4.3 3.8 11-.4 15.2-4.3 4.3-10.9 3.9-15.2-.4-4.3-4.3-3.8-11 .4-15.2 4.3-4.3 10.9-3.9 15.2.4z" opacity="0.9"/>
+    <path d="M17.5 46.5c-4.3-4.3-3.8-11 .4-15.2 4.3-4.3 10.9-3.9 15.2.4 4.3 4.3 3.8 11-.4 15.2-4.3 4.3-10.9 3.9-15.2-.4z" opacity="0.9"/>
+  </g>
+
+  <!-- center -->
+  <circle cx="32" cy="32" r="8" fill="#0ea5e9" stroke="rgba(17,24,39,0.18)" stroke-width="1"/>
+  <circle cx="29" cy="30" r="1.5" fill="rgba(17,24,39,0.25)"/>
+  <circle cx="36" cy="33" r="1.5" fill="rgba(17,24,39,0.25)"/>
+
+  <!-- tiny leaf -->
+  <path d="M44 44c5 0 8 3 8 8-5 0-8-3-8-8z" fill="url(#leaf)" opacity="0.95"/>
+</svg>

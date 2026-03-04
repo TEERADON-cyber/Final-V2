@@ -1,0 +1,70 @@
+<%- include("partials/layout-top", { title: "Shipping Invoice", bodyClass: printMode ? "print-mode" : "" }) %>
+
+<%
+  const data = delivery || {};
+  const packageInfo = package || {};
+  const serviceInfo = deliveryService || {};
+  const account = accountUser || {};
+  const invoicePayment = payment || null;
+%>
+
+<section class="card page-head">
+  <h2>Shipping Invoice</h2>
+  <p>Delivery ID: <strong><%= data.delivery_id || "-" %></strong></p>
+  <div class="actions">
+    <% if (data && data.delivery_id) { %>
+      <a class="btn" href="<%= rolePath('/invoice/' + encodeURIComponent(String(data.delivery_id))) %>?print=1" target="_blank" rel="noopener">Print / Save PDF</a>
+    <% } %>
+    <a class="btn secondary" href="<%= rolePath('/deliveries') %>">Back to Deliveries</a>
+  </div>
+</section>
+
+<section class="split">
+  <article class="card">
+    <h3>Account Holder</h3>
+    <p><strong>Name:</strong> <%= account.name || "-" %></p>
+    <p><strong>Username:</strong> <%= accountUsername || "-" %></p>
+    <p><strong>Email:</strong> <%= account.email || "-" %></p>
+  </article>
+
+  <article class="card">
+    <h3>Shipping Invoice Details</h3>
+    <p><strong>Generated:</strong> <%= generatedAt || "-" %></p>
+    <p><strong>Delivery Date:</strong> <%= data.delivery_date || "-" %></p>
+    <p><strong>Amount (THB):</strong> <%= formatTHB(data.amount) %></p>
+    <p><strong>Due Date:</strong> <%= data.due_date || "-" %></p>
+    <p><strong>Status:</strong> <%= data.status || "-" %></p>
+  </article>
+</section>
+
+<section class="card">
+  <h3>Service Information</h3>
+  <p><strong>Package ID:</strong> <%= data.package_id || packageInfo.package_id || "-" %></p>
+  <p><strong>Tracking Number:</strong> <%= packageInfo.tracking_number || packageInfo.package_reading || "-" %></p>
+  <p><strong>Delivery Service:</strong> <%= serviceInfo.service_name || "-" %></p>
+  <p><strong>Delivery Created:</strong> <%= data.created_at || "-" %></p>
+</section>
+
+<section class="card">
+  <h3>Payment Information</h3>
+  <% if (!invoicePayment) { %>
+    <div class="empty">No payment has been recorded for this delivery yet.</div>
+  <% } else { %>
+    <p><strong>Payment ID:</strong> <%= invoicePayment.payment_id || "-" %></p>
+    <p><strong>Method:</strong> <%= invoicePayment.payment_method || "-" %></p>
+    <p><strong>Payment Date:</strong> <%= invoicePayment.payment_date || "-" %></p>
+    <p><strong>Transaction Reference:</strong> <%= invoicePayment.transaction_ref || "-" %></p>
+  <% } %>
+</section>
+
+<% if (printMode) { %>
+  <script>
+    window.addEventListener("load", function () {
+      setTimeout(function () {
+        try { window.print(); } catch (e) {}
+      }, 150);
+    });
+  </script>
+<% } %>
+
+<%- include("partials/layout-bottom") %>

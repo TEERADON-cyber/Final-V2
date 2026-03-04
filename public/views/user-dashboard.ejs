@@ -1,0 +1,184 @@
+<%- include("partials/layout-top", { title: "My Dashboard", bodyClass: "overview-page" }) %>
+
+<%
+  const data = summary || {};
+  const deliveries = Array.isArray(recentDeliveries) ? recentDeliveries : [];
+  const payments = Array.isArray(recentPayments) ? recentPayments : [];
+  const monthReports = Array.isArray(monthlyReport) ? monthlyReport : [];
+  const formatPercent = (value) => `${Number.isFinite(Number(value)) ? Number(value).toFixed(1) : "0.0"}%`;
+  const formatDueWindow = (start, end) => {
+    if (!start && !end) return "-";
+    if (start && end && start !== end) return `${start} -> ${end}`;
+    return start || end;
+  };
+%>
+
+<section class="card page-head overview-welcome">
+  <h2>User Dashboard</h2>
+  <p>Overview of your packages, deliveries, and recent payments.</p>
+  <div class="actions overview-actions">
+    <a class="btn" href="<%= rolePath('/deliveries') %>">View All Deliveries</a>
+    <a class="btn secondary" href="<%= rolePath('/payments') %>">View All Payments</a>
+    <a class="btn secondary" href="#monthly-expense-report">Monthly Expense Report</a>
+  </div>
+</section>
+
+<% if (error) { %>
+  <section class="card">
+    <p class="muted"><%= error %></p>
+  </section>
+<% } %>
+
+<section class="stat-grid overview-stat-grid">
+  <article class="stat-card">
+    <h3>Packages</h3>
+    <p class="stat-value"><%= data.packagesCount || 0 %></p>
+    <p class="stat-sub">Packages linked to your account</p>
+  </article>
+  <article class="stat-card">
+    <h3>Total Deliveries</h3>
+    <p class="stat-value"><%= data.deliveriesCount || 0 %></p>
+    <p class="stat-sub">All deliveries created for you</p>
+  </article>
+  <article class="stat-card">
+    <h3>Paid Deliveries</h3>
+    <p class="stat-value"><%= data.paidDeliveriesCount || 0 %></p>
+    <p class="stat-sub">Deliveries you have already paid</p>
+  </article>
+  <article class="stat-card">
+    <h3>Unpaid / Overdue</h3>
+    <p class="stat-value"><%= data.unpaidDeliveriesCount || 0 %></p>
+    <p class="stat-sub">Overdue: <%= data.overdueDeliveriesCount || 0 %></p>
+  </article>
+  <article class="stat-card">
+    <h3>Total Due</h3>
+    <p class="stat-value"><%= formatTHB(data.totalDue || 0) %></p>
+    <p class="stat-sub">Amount you still owe</p>
+  </article>
+</section>
+
+<section class="card overview-table-card">
+  <h3 id="monthly-expense-report">Monthly Expense Report</h3>
+  <% if (!monthReports.length) { %>
+    <div class="empty">No monthly expense data available.</div>
+  <% } else { %>
+    <div class="billing-report-wrap table-scroll">
+      <table class="billing-report-table">
+        <thead>
+          <tr>
+            <th>Delivery Date</th>
+            <th class="numeric">Total Deliveries</th>
+            <th class="numeric">Paid</th>
+            <th class="numeric">Unpaid</th>
+            <th class="numeric">Overdue</th>
+            <th class="numeric">Payments</th>
+            <th class="numeric">Total Amount (THB)</th>
+            <th class="numeric">Paid Amount (THB)</th>
+            <th class="numeric">Outstanding (THB)</th>
+            <th class="numeric">Avg Delivery (THB)</th>
+            <th class="numeric">Paid / Collected</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% monthReports.forEach((report) => { %>
+            <tr>
+              <td>
+                <%= report.monthLabel || report.monthKey || "-" %>
+                <span class="report-subline">Due: <%= formatDueWindow(report.dueWindowStart, report.dueWindowEnd) %></span>
+                <span class="report-subline">Range: <%= formatTHB(report.minDeliveryAmount) %> - <%= formatTHB(report.maxDeliveryAmount) %></span>
+              </td>
+              <td class="numeric"><%= report.deliveriesCount || 0 %></td>
+              <td class="numeric"><%= report.paidDeliveriesCount || 0 %></td>
+              <td class="numeric"><%= report.unpaidDeliveriesCount || 0 %></td>
+              <td class="numeric"><%= report.overdueDeliveriesCount || 0 %></td>
+              <td class="numeric"><%= report.paymentsCount || 0 %></td>
+              <td class="numeric"><%= formatTHB(report.totalAmount) %></td>
+              <td class="numeric"><%= formatTHB(report.paidAmount) %></td>
+              <td class="numeric"><%= formatTHB(report.outstandingAmount) %></td>
+              <td class="numeric"><%= formatTHB(report.avgDeliveryAmount) %></td>
+              <td class="numeric"><%= formatPercent(report.paidRate) %> / <%= formatPercent(report.collectionRate) %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>
+
+<section class="card overview-table-card">
+  <h3>Recent Deliveries</h3>
+  <% if (!deliveries.length) { %>
+    <div class="empty">No deliveries found.</div>
+  <% } else { %>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Delivery ID</th>
+            <th>Package ID</th>
+            <th>Amount (THB)</th>
+            <th>Due Date</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% deliveries.forEach((delivery) => { %>
+            <% const paid = String(delivery.status || "").toLowerCase() === "paid"; %>
+            <tr>
+              <td><%= delivery.delivery_id || "-" %></td>
+              <td><%= delivery.package_id || "-" %></td>
+              <td><%= formatTHB(delivery.amount) %></td>
+              <td><%= delivery.due_date || "-" %></td>
+              <% const statusLabel = delivery.status || "-"; %>
+              <% const statusLower = statusLabel.toString().toLowerCase(); %>
+              <% const statusClass = statusLower === "paid" ? "badge-paid" : statusLower === "overdue" ? "badge-overdue" : statusLower === "unpaid" ? "badge-unpaid" : "badge-pending"; %>
+              <td><span class="badge <%= statusClass %>"><%= statusLabel %></span></td>
+              <td>
+                <% if (paid) { %>
+                  <span class="muted">Paid</span>
+                <% } else { %>
+                  <a class="btn" href="<%= rolePath('/payments/' + delivery.delivery_id) %>">Pay Now</a>
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>
+
+<section class="card overview-table-card">
+  <h3>Recent Payments</h3>
+  <% if (!payments.length) { %>
+    <div class="empty">No payments found.</div>
+  <% } else { %>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Payment ID</th>
+            <th>Delivery ID</th>
+            <th>Method</th>
+            <th>Date</th>
+            <th>Reference</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% payments.forEach((p) => { %>
+            <tr>
+              <td><%= p.payment_id || "-" %></td>
+              <td><%= p.delivery_id || "-" %></td>
+              <td><%= p.payment_method || "-" %></td>
+              <td><%= p.payment_date || "-" %></td>
+              <td><%= p.transaction_ref || "-" %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>
+
+<%- include("partials/layout-bottom") %>

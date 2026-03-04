@@ -1,0 +1,336 @@
+<%- include("partials/layout-top", { title: "Create Package" }) %>
+
+<%
+  const userList = Array.isArray(users) ? users : [];
+  const serviceList = Array.isArray(deliveryServices) ? deliveryServices : [];
+  const fieldValues = values || {};
+  const manualPackageConfig = !!canManualPackageConfig;
+  const hasRequiredOptions = manualPackageConfig
+    ? !!(userList.length && serviceList.length)
+    : !!serviceList.length;
+%>
+
+<section class="card page-head">
+  <h2>Create Package</h2>
+  <p><%= manualPackageConfig ? "Assign a delivery service package to a user." : "Create a package request with receiver and address details. Tracking number and service are assigned automatically." %></p>
+</section>
+
+<section class="card">
+  <% if (error) { %>
+    <div class="empty"><%= error %></div>
+  <% } %>
+
+  <% if (!hasRequiredOptions) { %>
+    <div class="empty">
+      <% if (manualPackageConfig) { %>
+        You need at least one user and one delivery service before creating a package.
+      <% } else { %>
+        A default delivery service is required before creating a package.
+      <% } %>
+    </div>
+  <% } else { %>
+    <form class="form-grid package-form" id="receiver-address-form" method="post" action="<%= rolePath('/create-package') %>">
+      <% if (manualPackageConfig) { %>
+        <section class="form-section">
+          <h3>Package Information</h3>
+          <div class="form-row">
+            <div class="field">
+              <label for="tracking_number">Tracking Number</label>
+              <input id="tracking_number" name="tracking_number" type="text" maxlength="120" required value="<%= fieldValues.tracking_number || '' %>">
+            </div>
+
+            <div class="field">
+              <label for="user_id">User</label>
+              <select id="user_id" name="user_id" required>
+                <% userList.forEach((u) => { %>
+                  <% const uid = u.user_id || u.id; %>
+                  <option value="<%= uid %>" <%= String(fieldValues.user_id || '') === String(uid) ? 'selected' : '' %>><%= uid %> - <%= u.name || "Unnamed" %></option>
+                <% }) %>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="service_id">Delivery Service</label>
+              <select id="service_id" name="service_id" required>
+                <% serviceList.forEach((u) => { %>
+                  <option value="<%= u.service_id %>" <%= String(fieldValues.service_id || '') === String(u.service_id) ? 'selected' : '' %>><%= u.service_name || ("Delivery Service " + u.service_id) %></option>
+                <% }) %>
+              </select>
+            </div>
+          </div>
+        </section>
+      <% } %>
+
+      <section class="form-section">
+        <h3>Package Details</h3>
+        <div class="form-row">
+          <div class="field">
+            <label for="weight">Weight (kg)</label>
+            <input
+              id="weight"
+              name="weight"
+              type="number"
+              step="0.01"
+              min="0.1"
+              max="125"
+              required
+              value="<%= fieldValues.weight || '' %>"
+              placeholder="e.g. 1.25"
+            >
+            <p class="muted">Maximum allowed weight is 125 kg.</p>
+            <p id="shipping-fee-estimate" class="muted">Estimated shipping fee: -</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="form-section">
+        <h3>Receiver Information</h3>
+        <div class="form-row">
+          <div class="field">
+            <label for="receiver_name">Receiver Name</label>
+            <input id="receiver_name" name="receiver_name" type="text" maxlength="120" required value="<%= fieldValues.receiver_name || '' %>">
+          </div>
+
+          <div class="field">
+            <label for="receiver_phone">Receiver Phone Number</label>
+            <input
+              id="receiver_phone"
+              name="receiver_phone"
+              type="text"
+              inputmode="numeric"
+              maxlength="10"
+              required
+              value="<%= fieldValues.receiver_phone || '' %>"
+              placeholder="10 digits"
+            >
+          </div>
+        </div>
+      </section>
+
+      <section class="form-section">
+        <h3>Address Information</h3>
+        <div class="form-row">
+          <div class="field">
+            <label for="house_number">House Number</label>
+            <input id="house_number" name="house_number" type="text" maxlength="80" required value="<%= fieldValues.house_number || '' %>">
+          </div>
+
+          <div class="field">
+            <label for="village_no">Village No. (Moo)</label>
+            <input id="village_no" name="village_no" type="text" maxlength="40" value="<%= fieldValues.village_no || '' %>">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="field">
+            <label for="soi">Soi (optional)</label>
+            <input id="soi" name="soi" type="text" maxlength="120" value="<%= fieldValues.soi || '' %>">
+          </div>
+
+          <div class="field">
+            <label for="road">Road (optional)</label>
+            <input id="road" name="road" type="text" maxlength="120" value="<%= fieldValues.road || '' %>">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="field">
+            <label for="subdistrict">Subdistrict</label>
+            <input id="subdistrict" name="subdistrict" type="text" maxlength="120" required value="<%= fieldValues.subdistrict || '' %>">
+          </div>
+
+          <div class="field">
+            <label for="district">District</label>
+            <input id="district" name="district" type="text" maxlength="120" required value="<%= fieldValues.district || '' %>">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="field">
+            <label for="province">Province</label>
+            <input id="province" name="province" type="text" maxlength="120" required value="<%= fieldValues.province || '' %>">
+          </div>
+
+          <div class="field">
+            <label for="postal_code">Postal Code</label>
+            <input
+              id="postal_code"
+              name="postal_code"
+              type="text"
+              inputmode="numeric"
+              maxlength="5"
+              required
+              value="<%= fieldValues.postal_code || '' %>"
+              placeholder="5 digits"
+            >
+          </div>
+        </div>
+      </section>
+
+      <section class="form-section">
+        <h3>Formatted Address Preview</h3>
+        <pre id="receiver-address-preview" class="address-preview-box">Start typing address to see preview.</pre>
+      </section>
+
+      <div class="actions">
+        <button class="btn" type="submit">Create Package</button>
+        <a class="btn secondary" href="<%= rolePath(backPath || (manualPackageConfig ? '/packages' : '/user-dashboard')) %>">Back</a>
+      </div>
+    </form>
+
+    <script>
+      (function () {
+        var form = document.getElementById("receiver-address-form");
+        if (!form) return;
+
+        var phoneInput = document.getElementById("receiver_phone");
+        var postalInput = document.getElementById("postal_code");
+        var weightInput = document.getElementById("weight");
+        var shippingEstimate = document.getElementById("shipping-fee-estimate");
+        var houseInput = document.getElementById("house_number");
+        var villageInput = document.getElementById("village_no");
+        var soiInput = document.getElementById("soi");
+        var roadInput = document.getElementById("road");
+        var subdistrictInput = document.getElementById("subdistrict");
+        var districtInput = document.getElementById("district");
+        var provinceInput = document.getElementById("province");
+        var preview = document.getElementById("receiver-address-preview");
+        var SHIPPING_BASE_FEE = 30;
+        var SHIPPING_PER_KG = 20;
+        var MIN_WEIGHT = 0.1;
+        var MAX_WEIGHT = 125;
+        var thbFormatter = new Intl.NumberFormat("th-TH", {
+          style: "currency",
+          currency: "THB",
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        });
+
+        function normalizeWeight() {
+          if (!weightInput) return null;
+          var parsed = Number.parseFloat(String(weightInput.value || "").trim());
+          if (!Number.isFinite(parsed)) return null;
+          return Math.round(parsed * 100) / 100;
+        }
+
+        function clampWeightInputToLimit() {
+          if (!weightInput) return;
+          var weight = normalizeWeight();
+          if (!Number.isFinite(weight)) return;
+          if (weight > MAX_WEIGHT) {
+            weightInput.value = String(MAX_WEIGHT);
+          }
+        }
+
+        function updateShippingEstimate() {
+          if (!shippingEstimate) return;
+          var weight = normalizeWeight();
+          if (!Number.isFinite(weight) || weight < MIN_WEIGHT || weight > MAX_WEIGHT) {
+            shippingEstimate.textContent = "Estimated shipping fee: -";
+            return;
+          }
+          var shippingAmount = Math.round((SHIPPING_BASE_FEE + (SHIPPING_PER_KG * weight)) * 100) / 100;
+          shippingEstimate.textContent = "Estimated shipping fee: " + thbFormatter.format(shippingAmount);
+        }
+
+        function normalizeDigits(input, maxLength) {
+          if (!input) return;
+          input.value = String(input.value || "").replace(/\D+/g, "").slice(0, maxLength);
+        }
+
+        function updatePreview() {
+          if (!preview) return;
+          var house = houseInput && houseInput.value ? houseInput.value.trim() : "";
+          var village = villageInput && villageInput.value ? villageInput.value.trim() : "";
+          var soi = soiInput && soiInput.value ? soiInput.value.trim() : "";
+          var road = roadInput && roadInput.value ? roadInput.value.trim() : "";
+          var subdistrict = subdistrictInput && subdistrictInput.value ? subdistrictInput.value.trim() : "";
+          var district = districtInput && districtInput.value ? districtInput.value.trim() : "";
+          var province = provinceInput && provinceInput.value ? provinceInput.value.trim() : "";
+          var postal = postalInput && postalInput.value ? postalInput.value.trim() : "";
+          var lines = [];
+
+          var houseLineParts = [];
+          if (house) houseLineParts.push("House No. " + house);
+          if (village) houseLineParts.push("Moo " + village);
+          if (houseLineParts.length) lines.push(houseLineParts.join(", "));
+
+          if (soi) lines.push("Soi " + soi);
+          if (road) lines.push("Road " + road);
+          if (subdistrict) lines.push("Subdistrict " + subdistrict);
+          if (district) lines.push("District " + district);
+
+          if (province && postal) {
+            lines.push(province + " " + postal);
+          } else if (province) {
+            lines.push(province);
+          } else if (postal) {
+            lines.push(postal);
+          }
+
+          preview.textContent = lines.length
+            ? lines.join("\n")
+            : "Start typing address to see preview.";
+        }
+
+        if (phoneInput) {
+          phoneInput.addEventListener("input", function () {
+            normalizeDigits(phoneInput, 10);
+            phoneInput.setCustomValidity(/^0\d{9}$/.test(phoneInput.value) ? "" : "Phone number must be exactly 10 digits and start with 0.");
+            updatePreview();
+          });
+        }
+        if (postalInput) {
+          postalInput.addEventListener("input", function () {
+            normalizeDigits(postalInput, 5);
+            postalInput.setCustomValidity(/^\d{5}$/.test(postalInput.value) ? "" : "Postal code must be exactly 5 digits.");
+            updatePreview();
+          });
+        }
+        if (weightInput) {
+          weightInput.addEventListener("input", function () {
+            clampWeightInputToLimit();
+            var weight = normalizeWeight();
+            var isValid = Number.isFinite(weight) && weight >= MIN_WEIGHT && weight <= MAX_WEIGHT;
+            weightInput.setCustomValidity(isValid ? "" : "Weight must be between 0.1 and 125 kg.");
+            updateShippingEstimate();
+          });
+        }
+
+        [houseInput, villageInput, soiInput, roadInput, subdistrictInput, districtInput, provinceInput].forEach(function (input) {
+          if (!input) return;
+          input.addEventListener("input", updatePreview);
+        });
+
+        form.addEventListener("submit", function (event) {
+          normalizeDigits(phoneInput, 10);
+          normalizeDigits(postalInput, 5);
+
+          if (phoneInput) {
+            phoneInput.setCustomValidity(/^0\d{9}$/.test(phoneInput.value) ? "" : "Phone number must be exactly 10 digits and start with 0.");
+          }
+          if (postalInput) {
+            postalInput.setCustomValidity(/^\d{5}$/.test(postalInput.value) ? "" : "Postal code must be exactly 5 digits.");
+          }
+          if (weightInput) {
+            clampWeightInputToLimit();
+            var weight = normalizeWeight();
+            var isValid = Number.isFinite(weight) && weight >= MIN_WEIGHT && weight <= MAX_WEIGHT;
+            weightInput.setCustomValidity(isValid ? "" : "Weight must be between 0.1 and 125 kg.");
+          }
+
+          if (!form.checkValidity()) {
+            event.preventDefault();
+            form.reportValidity();
+            return;
+          }
+        });
+
+        updatePreview();
+        updateShippingEstimate();
+      })();
+    </script>
+  <% } %>
+</section>
+
+<%- include("partials/layout-bottom") %>

@@ -1,0 +1,74 @@
+<%- include("partials/layout-top", { title: "User Shipping Invoice Collection", bodyClass: printMode ? "print-mode" : "" }) %>
+
+<%
+  const profile = user || {};
+  const uid = profile.user_id || profile.id || "-";
+  const invoiceList = Array.isArray(deliveries) ? deliveries : [];
+%>
+
+<section class="card page-head">
+  <h2>Shipping Invoice Collection Sheet</h2>
+  <p>User: <strong><%= profile.name || "-" %></strong> (ID: <strong><%= uid %></strong>)</p>
+  <p>Email: <strong><%= profile.email || "-" %></strong></p>
+  <p>Generated: <strong><%= generatedAt || "-" %></strong></p>
+  <p>Total Due: <strong><%= formatTHB(totalDue || 0) %></strong></p>
+  <div class="actions">
+    <% if (uid && uid !== "-") { %>
+      <a class="btn" href="<%= rolePath('/user/' + encodeURIComponent(String(uid)) + '/invoices') %>?print=1" target="_blank" rel="noopener">Print / Save PDF</a>
+    <% } %>
+    <a class="btn secondary" href="<%= rolePath('/users') %>">Back to Users</a>
+    <a class="btn secondary" href="<%= rolePath('/user/' + uid) %>">Open User Detail</a>
+  </div>
+</section>
+
+<section class="card">
+  <% if (!invoiceList.length) { %>
+    <div class="empty">No unpaid or overdue shipping invoices found for this user.</div>
+  <% } else { %>
+    <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Delivery ID</th>
+          <th>Delivery Date</th>
+          <th>Due Date</th>
+          <th>Status</th>
+          <th>Package ID</th>
+          <th>Tracking Number</th>
+          <th>Delivery Service</th>
+          <th>Amount (THB)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% invoiceList.forEach((delivery) => { %>
+          <tr>
+            <td><%= delivery.delivery_id || "-" %></td>
+            <td><%= delivery.delivery_date || "-" %></td>
+            <td><%= delivery.due_date || "-" %></td>
+            <% const statusLabel = delivery.status || "-"; %>
+            <% const statusLower = statusLabel.toString().toLowerCase(); %>
+            <% const statusClass = statusLower === "paid" ? "badge-paid" : statusLower === "overdue" ? "badge-overdue" : statusLower === "unpaid" ? "badge-unpaid" : "badge-pending"; %>
+            <td><span class="badge <%= statusClass %>"><%= statusLabel %></span></td>
+            <td><%= delivery.package_id || "-" %></td>
+            <td><%= delivery.tracking_number || "-" %></td>
+            <td><%= delivery.service_name || "-" %></td>
+            <td><%= formatTHB(delivery.amount) %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+    </div>
+  <% } %>
+</section>
+
+<% if (printMode) { %>
+  <script>
+    window.addEventListener("load", function () {
+      setTimeout(function () {
+        try { window.print(); } catch (e) {}
+      }, 150);
+    });
+  </script>
+<% } %>
+
+<%- include("partials/layout-bottom") %>

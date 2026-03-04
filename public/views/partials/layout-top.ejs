@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title ? `${title} | Postal Delivery System` : "Postal Delivery System" %></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="/css/style.css">
+ </head>
+ <body class="<%= typeof bodyClass === 'string' ? bodyClass : '' %>">
+  <div class="app-shell">
+    <aside class="app-sidebar">
+      <div class="sidebar-header">
+        <div class="brand-wrap">
+          <img class="brand-logo" src="/images/flower-logo.svg" alt="Postal Delivery System flower logo">
+          <div class="brand-text">
+            <span class="brand-title">Postal Delivery</span>
+            <span class="brand-subtitle">Control Panel</span>
+          </div>
+        </div>
+      </div>
+
+      <% if (isAuthenticated) { %>
+        <nav class="sidebar-nav">
+          <a href="<%= rolePath('/') %>">Overview</a>
+          <% if (!isAdmin) { %>
+            <a href="<%= rolePath('/user-dashboard') %>">My Dashboard</a>
+            <a href="<%= rolePath('/create-package') %>">Create Package</a>
+          <% } %>
+          <% if (isAdmin) { %>
+            <a href="<%= rolePath('/admin-dashboard') %>">Admin Dashboard</a>
+          <% } %>
+          <a href="<%= rolePath('/deliveries') %>">Deliveries</a>
+          <a href="<%= rolePath('/payments') %>">Payments</a>
+          <% if (isAdmin) { %>
+            <span class="sidebar-section-label">Admin</span>
+            <a href="<%= rolePath('/users') %>">Users</a>
+            <a href="<%= rolePath('/packages') %>">Packages</a>
+            <a href="<%= rolePath('/delivery-services') %>">Delivery Services</a>
+            <a href="<%= rolePath('/create') %>">Create User</a>
+            <a href="<%= rolePath('/create-package') %>">Create Package</a>
+            <a href="<%= rolePath('/create-delivery') %>">Create Delivery</a>
+            <a href="<%= rolePath('/create-delivery-service') %>">Create Delivery Service</a>
+          <% } %>
+        </nav>
+      <% } %>
+
+      <div class="sidebar-footer">
+        <% if (isAuthenticated && currentUser) { %>
+          <span class="role-badge"><%= roleLabel || "User" %>: <%= currentUser.name %></span>
+          <a class="role-link" href="/logout">Logout</a>
+        <% } else { %>
+          <span class="role-badge">Guest</span>
+          <a class="role-link" href="/login">Login</a>
+          <a class="role-link" href="/register">Register</a>
+        <% } %>
+      </div>
+    </aside>
+
+    <div class="app-main">
+      <header class="app-topbar">
+          <div class="topbar-left">
+            <span class="topbar-kicker">Postal Delivery</span>
+            <span class="topbar-title"><%= title || "Dashboard" %></span>
+          </div>
+          <div class="topbar-right">
+            <% if (isAuthenticated && currentUser) { %>
+              <span class="topbar-user"><%= roleLabel || "User" %>: <%= currentUser.name %></span>
+              <a class="topbar-link" href="/logout">Logout</a>
+            <% } else { %>
+              <span class="topbar-user">Guest</span>
+              <a class="topbar-link" href="/login">Login</a>
+              <a class="topbar-link" href="/register">Register</a>
+            <% } %>
+          </div>
+      </header>
+      <main class="page">
+    <% if (notice && notice.text) { %>
+      <section class="notice notice-<%= notice.type || 'warning' %>" role="status" aria-live="polite">
+        <p><%= notice.text %></p>
+      </section>
+    <% } %>

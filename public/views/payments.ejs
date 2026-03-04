@@ -1,0 +1,49 @@
+<%- include("partials/layout-top", { title: "Payments" }) %>
+
+<% const list = Array.isArray(payments) ? payments : []; %>
+<section class="card page-head">
+  <h2>Payments</h2>
+  <p>Total payments: <strong><%= list.length %></strong></p>
+  <% if (message) { %>
+    <p class="muted"><%= message %></p>
+  <% } %>
+  <div class="actions">
+    <a class="btn secondary" href="<%= rolePath('/deliveries') %>">Go to Deliveries</a>
+  </div>
+</section>
+
+<section class="card">
+  <% if (!list.length) { %>
+    <div class="empty">No payments found.</div>
+  <% } else { %>
+    <table>
+      <thead>
+        <tr>
+          <th>Payment ID</th>
+          <th>Delivery ID</th>
+          <th>Method</th>
+          <th>Payment Status</th>
+          <th>Date</th>
+          <th>Transaction Ref</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% list.forEach((p) => { %>
+          <% const methodKey = normalizePaymentMethod(p.payment_method) || "online_bank"; %>
+          <% const statusKey = String(p.payment_status || "").toLowerCase().trim() || "pending_payment"; %>
+          <% const statusClass = statusKey === "paid" ? "badge-paid" : statusKey === "pending" ? "badge-pending" : statusKey === "cancelled" || statusKey === "refunded" ? "badge-overdue" : "badge-unpaid"; %>
+          <tr>
+            <td><%= p.payment_id || "-" %></td>
+            <td><%= p.delivery_id || "-" %></td>
+            <td><span class="badge badge-method badge-method-<%= methodKey %>"><%= formatPaymentMethod(methodKey) %></span></td>
+            <td><span class="badge <%= statusClass %>"><%= formatPaymentStatus(statusKey) %></span></td>
+            <td><%= p.payment_date || "-" %></td>
+            <td><%= p.transaction_ref || "-" %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</section>
+
+<%- include("partials/layout-bottom") %>

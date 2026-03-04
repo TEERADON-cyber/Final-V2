@@ -1,0 +1,44 @@
+      </main>
+    </div>
+  </div>
+  <script>
+    (function () {
+      var containers = Array.prototype.slice.call(document.querySelectorAll(".table-scroll"));
+      if (!containers.length) return;
+
+      containers.forEach(function (el) {
+        var isDown = false;
+        var startX = 0;
+        var startScrollLeft = 0;
+
+        el.addEventListener("pointerdown", function (event) {
+          // Only handle primary button / touch / pen
+          if (event.pointerType === "mouse" && event.button !== 0) return;
+          isDown = true;
+          startX = event.clientX;
+          startScrollLeft = el.scrollLeft;
+          try {
+            el.setPointerCapture(event.pointerId);
+          } catch (e) {
+            // Ignore if capture is unsupported.
+          }
+        });
+
+        el.addEventListener("pointermove", function (event) {
+          if (!isDown) return;
+          var dx = event.clientX - startX;
+          el.scrollLeft = startScrollLeft - dx;
+        });
+
+        function endDrag() {
+          isDown = false;
+        }
+
+        el.addEventListener("pointerup", endDrag);
+        el.addEventListener("pointercancel", endDrag);
+        el.addEventListener("pointerleave", endDrag);
+      });
+    })();
+  </script>
+ </body>
+ </html>

@@ -1,0 +1,41 @@
+<%- include("partials/layout-top", { title: "Packages" }) %>
+
+<% const list = Array.isArray(packages) ? packages : []; %>
+<section class="card page-head">
+  <h2>Packages</h2>
+  <p>Total packages: <strong><%= list.length %></strong></p>
+  <div class="actions">
+    <a class="btn" href="<%= rolePath('/create-package') %>">Create Package</a>
+  </div>
+</section>
+
+<section class="card">
+  <% if (!list.length) { %>
+    <div class="empty">No packages found.</div>
+  <% } else { %>
+    <table>
+      <thead>
+        <tr>
+          <th>Package ID</th>
+          <th>Tracking Number</th>
+          <th>User ID</th>
+          <th>Delivery Service</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% list.forEach((m) => { %>
+          <tr>
+            <td><%= m.package_id || "-" %></td>
+            <td><%= m.tracking_number || m.package_reading || "-" %></td>
+            <td><%= m.user_id || "-" %></td>
+            <td><%= m.service_name || m.service_id || "-" %></td>
+            <td><%= m.created_at || "-" %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</section>
+
+<%- include("partials/layout-bottom") %>

@@ -1,0 +1,37 @@
+<%- include("partials/layout-top", { title: "Delivery Services" }) %>
+
+<% const list = Array.isArray(deliveryServices) ? deliveryServices : []; %>
+<section class="card page-head">
+  <h2>Delivery Services</h2>
+  <p>Total delivery services: <strong><%= list.length %></strong></p>
+  <div class="actions">
+    <a class="btn" href="<%= rolePath('/create-delivery-service') %>">Create Delivery Service</a>
+  </div>
+</section>
+
+<section class="card">
+  <% if (!list.length) { %>
+    <div class="empty">No delivery services found.</div>
+  <% } else { %>
+    <table>
+      <thead>
+        <tr>
+          <th>Service ID</th>
+          <th>Service Name</th>
+          <th>Price Rate (THB / kg)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% list.forEach((u) => { %>
+          <tr>
+            <td><%= u.service_id || "-" %></td>
+            <td><%= u.service_name || "-" %></td>
+            <td><%= Number.isFinite(Number.parseFloat(u.price_rate)) ? formatTHB(Number.parseFloat(u.price_rate)) : "-" %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</section>
+
+<%- include("partials/layout-bottom") %>

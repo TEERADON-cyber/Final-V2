@@ -1,0 +1,72 @@
+<%- include("partials/layout-top", { title: "Create Delivery" }) %>
+
+<% const packageList = Array.isArray(packages) ? packages : []; %>
+
+<section class="card page-head">
+  <h2>Create Delivery</h2>
+  <p>Create a delivery for a specific package.</p>
+</section>
+
+<section class="card">
+  <% if (!packageList.length) { %>
+    <div class="empty">
+      No packages available. Create a package first.
+    </div>
+  <% } else { %>
+    <form class="form-grid" method="post" action="<%= rolePath('/create-delivery') %>">
+      <div class="field">
+        <label for="package_id">Package</label>
+        <select id="package_id" name="package_id" required>
+          <% packageList.forEach((m) => { %>
+            <option value="<%= m.package_id %>">
+              Package <%= m.package_id %> - <%= m.tracking_number || m.package_reading || "N/A" %>
+            </option>
+          <% }) %>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="delivery_date">Delivery Date</label>
+        <input id="delivery_date" name="delivery_date" type="date" required>
+      </div>
+
+      <div class="field">
+        <label>Amount (THB)</label>
+        <p class="muted">Calculated automatically from package weight, delivery service rate, and additional charge.</p>
+      </div>
+
+      <div class="field">
+        <label for="additional_charge">Additional Charge (THB)</label>
+        <input id="additional_charge" name="additional_charge" type="number" min="0" step="0.01" value="0" placeholder="0.00">
+      </div>
+
+      <div class="field">
+        <label for="due_date">Due Date</label>
+        <input id="due_date" name="due_date" type="date" required>
+      </div>
+
+      <div class="field">
+        <label for="payment_method">Payment Method</label>
+        <select id="payment_method" name="payment_method" required>
+          <option value="online_bank">Online Bank</option>
+          <option value="cod">Cash on Delivery (COD)</option>
+          <option value="credit_card">Credit Card</option>
+          <option value="promptpay">PromptPay</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Payment Status Rule</label>
+        <p class="muted">Status is assigned automatically from payment method rules.</p>
+        <input type="hidden" name="status" value="unpaid">
+      </div>
+
+      <div class="actions">
+        <button class="btn" type="submit">Create Delivery</button>
+        <a class="btn secondary" href="<%= rolePath('/deliveries') %>">Back</a>
+      </div>
+    </form>
+  <% } %>
+</section>
+
+<%- include("partials/layout-bottom") %>

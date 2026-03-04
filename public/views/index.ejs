@@ -1,0 +1,245 @@
+<%- include("partials/layout-top", { title: "Home Dashboard", bodyClass: "overview-page" }) %>
+
+<%
+  const dashboard = home || {};
+  const mode = dashboard.mode || (isAdmin ? "admin" : "user");
+  const data = dashboard.summary || {};
+  const urgentDeliveries = Array.isArray(dashboard.urgentDeliveries) ? dashboard.urgentDeliveries : [];
+  const recentDeliveries = Array.isArray(dashboard.recentDeliveries) ? dashboard.recentDeliveries : [];
+  const recentPayments = Array.isArray(dashboard.recentPayments) ? dashboard.recentPayments : [];
+  const pageError = dashboard.error || null;
+%>
+
+<section class="card page-head overview-welcome">
+  <h2>Home Dashboard</h2>
+  <p>
+    <% if (mode === "admin") { %>
+      Live control center for the whole postal operation.
+    <% } else { %>
+      Personal command center for your shipments and payments.
+    <% } %>
+  </p>
+  <div class="actions overview-actions">
+    <% if (mode === "admin") { %>
+      <a class="btn" href="<%= rolePath('/admin-dashboard') %>">Open Admin Console</a>
+      <a class="btn secondary" href="<%= rolePath('/users') %>">Users</a>
+      <a class="btn secondary" href="<%= rolePath('/deliveries') %>">Deliveries</a>
+      <a class="btn secondary" href="<%= rolePath('/payments') %>">Payments</a>
+    <% } else { %>
+      <a class="btn" href="<%= rolePath('/user-dashboard') %>">Open My Overview</a>
+      <a class="btn secondary" href="<%= rolePath('/deliveries') %>">My Deliveries</a>
+      <a class="btn secondary" href="<%= rolePath('/payments') %>">My Payments</a>
+    <% } %>
+  </div>
+</section>
+
+<% if (pageError) { %>
+  <section class="card">
+    <p class="muted"><%= pageError %></p>
+  </section>
+<% } %>
+
+<% if (mode === "admin") { %>
+  <section class="stat-grid overview-stat-grid">
+    <article class="stat-card">
+      <h3>Total Users</h3>
+      <p class="stat-value"><%= data.usersCount || 0 %></p>
+      <p class="stat-sub">Active accounts in the system</p>
+    </article>
+    <article class="stat-card">
+      <h3>Packages</h3>
+      <p class="stat-value"><%= data.packagesCount || 0 %></p>
+      <p class="stat-sub">Registered packages ready to move</p>
+    </article>
+    <article class="stat-card">
+      <h3>Services</h3>
+      <p class="stat-value"><%= data.deliveryServicesCount || 0 %></p>
+      <p class="stat-sub">Available delivery service options</p>
+    </article>
+    <article class="stat-card">
+      <h3>Open Deliveries</h3>
+      <p class="stat-value"><%= data.openDeliveriesCount || 0 %></p>
+      <p class="stat-sub">Awaiting payment or completion</p>
+    </article>
+    <article class="stat-card">
+      <h3>Outstanding</h3>
+      <p class="stat-value"><%= formatTHB(data.outstandingAmount || 0) %></p>
+      <p class="stat-sub">Amount still to be collected</p>
+    </article>
+  </section>
+
+  <section class="split">
+    <article class="card overview-table-card">
+      <h3>Urgent Queue</h3>
+      <% if (!urgentDeliveries.length) { %>
+        <div class="empty">No urgent deliveries in queue.</div>
+      <% } else { %>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Delivery ID</th>
+                <th>Package</th>
+                <th>Due Date</th>
+                <th>Amount (THB)</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% urgentDeliveries.forEach((delivery) => { %>
+                <tr>
+                  <td><%= delivery.delivery_id || "-" %></td>
+                  <td><%= delivery.package_id || "-" %></td>
+                  <td><%= delivery.due_date || "-" %></td>
+                  <td><%= formatTHB(delivery.amount) %></td>
+                  <% const statusLabel = delivery.status || "-"; %>
+                  <% const statusLower = statusLabel.toString().toLowerCase(); %>
+                  <% const statusClass = statusLower === "paid" ? "badge-paid" : statusLower === "overdue" ? "badge-overdue" : statusLower === "unpaid" ? "badge-unpaid" : "badge-pending"; %>
+                  <td><span class="badge <%= statusClass %>"><%= statusLabel %></span></td>
+                  <td><a class="btn secondary" href="<%= rolePath('/payments/' + delivery.delivery_id) %>">Open</a></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+    </article>
+
+    <article class="card overview-table-card">
+      <h3>Recent Payments</h3>
+      <% if (!recentPayments.length) { %>
+        <div class="empty">No recent payments found.</div>
+      <% } else { %>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Payment ID</th>
+                <th>Delivery</th>
+                <th>Method</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% recentPayments.forEach((p) => { %>
+                <tr>
+                  <td><%= p.payment_id || "-" %></td>
+                  <td><%= p.delivery_id || "-" %></td>
+                  <td><%= p.payment_method || "-" %></td>
+                  <td><%= p.payment_date || "-" %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+    </article>
+  </section>
+<% } else { %>
+  <section class="stat-grid overview-stat-grid">
+    <article class="stat-card">
+      <h3>My Packages</h3>
+      <p class="stat-value"><%= data.packagesCount || 0 %></p>
+      <p class="stat-sub">Items linked to your account</p>
+    </article>
+    <article class="stat-card">
+      <h3>Deliveries</h3>
+      <p class="stat-value"><%= data.deliveriesCount || 0 %></p>
+      <p class="stat-sub">All deliveries created for you</p>
+    </article>
+    <article class="stat-card">
+      <h3>Open Deliveries</h3>
+      <p class="stat-value"><%= data.openDeliveriesCount || 0 %></p>
+      <p class="stat-sub">Still in progress or unpaid</p>
+    </article>
+    <article class="stat-card">
+      <h3>Payments Made</h3>
+      <p class="stat-value"><%= data.paymentsCount || 0 %></p>
+      <p class="stat-sub">Completed payment records</p>
+    </article>
+    <article class="stat-card">
+      <h3>Amount Due</h3>
+      <p class="stat-value"><%= formatTHB(data.dueAmount || 0) %></p>
+      <p class="stat-sub">What you still need to pay</p>
+    </article>
+  </section>
+
+  <section class="card overview-table-card">
+    <h3>Deliveries Requiring Action</h3>
+    <% if (!recentDeliveries.length) { %>
+      <div class="empty">No upcoming deliveries found.</div>
+    <% } else { %>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Delivery ID</th>
+              <th>Package</th>
+              <th>Due Date</th>
+              <th>Amount (THB)</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% recentDeliveries.forEach((delivery) => { %>
+              <% const isPaid = String(delivery.status || "").toLowerCase() === "paid"; %>
+              <tr>
+                <td><%= delivery.delivery_id || "-" %></td>
+                <td><%= delivery.package_id || "-" %></td>
+                <td><%= delivery.due_date || "-" %></td>
+                <td><%= formatTHB(delivery.amount) %></td>
+                <% const statusLabel2 = delivery.status || "-"; %>
+                <% const statusLower2 = statusLabel2.toString().toLowerCase(); %>
+                <% const statusClass2 = statusLower2 === "paid" ? "badge-paid" : statusLower2 === "overdue" ? "badge-overdue" : statusLower2 === "unpaid" ? "badge-unpaid" : "badge-pending"; %>
+                <td><span class="badge <%= statusClass2 %>"><%= statusLabel2 %></span></td>
+                <td>
+                  <% if (isPaid) { %>
+                    <span class="muted">Paid</span>
+                  <% } else { %>
+                    <a class="btn" href="<%= rolePath('/payments/' + delivery.delivery_id) %>">Pay Now</a>
+                  <% } %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </section>
+
+  <section class="card overview-table-card">
+    <h3>Recent Payments</h3>
+    <% if (!recentPayments.length) { %>
+      <div class="empty">No recent payments found.</div>
+    <% } else { %>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Payment ID</th>
+              <th>Delivery</th>
+              <th>Method</th>
+              <th>Date</th>
+              <th>Reference</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% recentPayments.forEach((p) => { %>
+              <tr>
+                <td><%= p.payment_id || "-" %></td>
+                <td><%= p.delivery_id || "-" %></td>
+                <td><%= p.payment_method || "-" %></td>
+                <td><%= p.payment_date || "-" %></td>
+                <td><%= p.transaction_ref || "-" %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </section>
+<% } %>
+
+<%- include("partials/layout-bottom") %>

@@ -1,0 +1,89 @@
+<%- include("partials/layout-top", { title: "Pay Delivery" }) %>
+
+<%
+  const data = delivery || {};
+  const paidAlready = String(data.status || "").toLowerCase() === "paid";
+  const payment = existingPayment || null;
+  const selectedMethod = normalizePaymentMethod(data.payment_method) || "online_bank";
+  const orderStatus = normalizeOrderStatus(data.order_status) || "processing";
+  const paymentStatus = payment
+    ? String(payment.payment_status || "").toLowerCase().trim()
+    : (selectedMethod === "cod" && orderStatus !== "delivered" ? "pending" : "");
+  const isSettled = paidAlready || paymentStatus === "paid";
+  const isCodPending = selectedMethod === "cod" && paymentStatus !== "paid" && orderStatus !== "delivered";
+  const lockPaymentForm = isSettled || isCodPending;
+%>
+
+<section class="card page-head">
+  <h2>Pay Delivery</h2>
+  <p>Delivery ID: <strong><%= data.delivery_id || "-" %></strong></p>
+  <div class="actions">
+    <a class="btn secondary" href="<%= rolePath('/deliveries') %>">Back to Deliveries</a>
+    <a class="btn secondary" href="<%= rolePath('/payments') %>">View Payments</a>
+  </div>
+</section>
+
+<section class="split">
+  <article class="card">
+    <h3>Delivery Details</h3>
+    <p><strong>Package ID:</strong> <%= data.package_id || "-" %></p>
+    <p><strong>Delivery Date:</strong> <%= data.delivery_date || "-" %></p>
+    <p><strong>Amount (THB):</strong> <%= formatTHB(data.amount) %></p>
+    <p><strong>Due Date:</strong> <%= data.due_date || "-" %></p>
+    <p><strong>Payment Method:</strong> <%= formatPaymentMethod(selectedMethod) %></p>
+    <p><strong>Status:</strong> <%= data.status || "-" %></p>
+  </article>
+
+  <article class="card">
+    <h3>Payment Form</h3>
+
+    <% if (error) { %>
+      <p class="muted"><%= error %></p>
+    <% } %>
+
+    <% if (lockPaymentForm) { %>
+      <div class="empty">
+        <% if (isSettled) { %>
+          This delivery is already paid.
+        <% } else if (isCodPending) { %>
+          COD payment is pending and will auto-complete when delivery is marked delivered.
+        <% } else { %>
+          Payment was submitted and is pending admin verification.
+        <% } %>
+        <% if (payment) { %>
+          <br>
+          Payment ID: <strong><%= payment.payment_id %></strong>
+          <br>
+          Method: <strong><%= formatPaymentMethod(payment.payment_method) %></strong>
+          <br>
+          Payment Status: <strong><%= formatPaymentStatus(payment.payment_status || (isSettled ? "paid" : "pending_payment")) %></strong>
+          <br>
+          Date: <strong><%= payment.payment_date || "-" %></strong>
+        <% } %>
+      </div>
+    <% } else { %>
+      <% if (payment && paymentStatus === "pending_payment") { %>
+        <p class="muted">
+          A pending payment record already exists. You can submit/update confirmation details below.
+        </p>
+      <% } %>
+      <form class="form-grid" method="post" action="<%= rolePath('/pay-delivery/' + data.delivery_id) %>">
+        <div class="field">
+          <label for="payment_method">Payment Method</label>
+          <select id="payment_method" name="payment_method" required>
+            <option value="online_bank" <%= selectedMethod === "online_bank" ? "selected" : "" %>>Online Bank</option>
+            <option value="cod" <%= selectedMethod === "cod" ? "selected" : "" %>>Cash on Delivery (COD)</option>
+            <option value="credit_card" <%= selectedMethod === "credit_card" ? "selected" : "" %>>Credit Card</option>
+            <option value="promptpay" <%= selectedMethod === "promptpay" ? "selected" : "" %>>PromptPay</option>
+          </select>
+        </div>
+
+        <div class="actions">
+          <button class="btn" type="submit">Confirm Payment</button>
+        </div>
+      </form>
+    <% } %>
+  </article>
+</section>
+
+<%- include("partials/layout-bottom") %>

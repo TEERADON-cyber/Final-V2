@@ -1,0 +1,85 @@
+<%- include("partials/layout-top", { title: "Payment" }) %>
+
+<%
+  const data = delivery || {};
+  const payment = existingPayment || null;
+  const deliveryMethod = normalizePaymentMethod(data.payment_method) || "online_bank";
+  const orderStatus = normalizeOrderStatus(data.order_status) || "processing";
+  const packageStatus = String(data.package_status || "active").toLowerCase().trim();
+  const isCancelledPackage = packageStatus === "cancelled";
+  const selectedMethod = normalizePaymentMethod(
+    (payment && payment.payment_method) || deliveryMethod
+  ) || "online_bank";
+  const fallbackPaymentStatus = deliveryMethod === "cod" && orderStatus !== "delivered"
+    ? "pending"
+    : (String(data.status || "").toLowerCase().trim() === "paid" ? "paid" : "unpaid");
+  const paymentStatus = payment
+    ? String(payment.payment_status || "").toLowerCase().trim()
+    : fallbackPaymentStatus;
+  const isPaid = paymentStatus === "paid" || String(data.status || "").toLowerCase().trim() === "paid";
+  const isCodPending = deliveryMethod === "cod" && paymentStatus !== "paid";
+%>
+
+<section class="card page-head">
+  <h2>Customer Payment</h2>
+  <p>Delivery ID: <strong><%= data.delivery_id || "-" %></strong></p>
+  <div class="actions">
+    <a class="btn secondary" href="<%= rolePath('/deliveries') %>">Back to Deliveries</a>
+    <a class="btn secondary" href="<%= rolePath('/payments') %>">View Payment Records</a>
+  </div>
+</section>
+
+<section class="split">
+  <article class="card">
+    <h3>Delivery Information</h3>
+    <p><strong>Tracking Number:</strong> <%= data.tracking_number || "-" %></p>
+    <p><strong>Receiver Name:</strong> <%= data.receiver_name || "-" %></p>
+    <p><strong>Total Amount (THB):</strong> <%= formatTHB(data.amount) %></p>
+  </article>
+
+  <article class="card">
+    <h3>Payment Method</h3>
+
+    <% if (error) { %>
+      <p class="muted"><%= error %></p>
+    <% } %>
+
+    <% if (isCancelledPackage) { %>
+      <div class="empty">
+        This package was cancelled. Payment is no longer available.
+      </div>
+    <% } else if (isPaid) { %>
+      <div class="empty">
+        This delivery is already paid.
+      </div>
+    <% } else if (isCodPending) { %>
+      <div class="empty">
+        Cash on Delivery is pending and will be marked paid when delivered.
+      </div>
+    <% } else { %>
+      <% if (payment && paymentStatus === "pending_payment") { %>
+        <p class="muted">
+          A pending payment exists. You can submit/update payment confirmation below.
+        </p>
+      <% } %>
+
+      <form class="form-grid" method="post" action="<%= rolePath('/payments/' + data.delivery_id) %>">
+        <div class="field">
+          <label for="payment_method">Payment Method</label>
+          <select id="payment_method" name="payment_method" required>
+            <option value="online_bank" <%= selectedMethod === "online_bank" ? "selected" : "" %>>Online Bank</option>
+            <option value="cod" <%= selectedMethod === "cod" ? "selected" : "" %>>Cash on Delivery (COD)</option>
+            <option value="credit_card" <%= selectedMethod === "credit_card" ? "selected" : "" %>>Credit Card</option>
+            <option value="promptpay" <%= selectedMethod === "promptpay" ? "selected" : "" %>>PromptPay</option>
+          </select>
+        </div>
+
+        <div class="actions">
+          <button class="btn" type="submit">Confirm Payment</button>
+        </div>
+      </form>
+    <% } %>
+  </article>
+</section>
+
+<%- include("partials/layout-bottom") %>
