@@ -3,6 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script>
+    (function () {
+      try {
+        var savedTheme = localStorage.getItem("theme");
+        var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        var useDarkMode = savedTheme ? savedTheme === "dark" : prefersDark;
+        if (useDarkMode) {
+          document.documentElement.classList.add("dark-mode");
+        }
+      } catch (e) {
+        // Ignore localStorage/matchMedia errors and keep default light mode.
+      }
+    })();
+  </script>
   <title><%= title ? `${title} | Postal Delivery System` : "Postal Delivery System" %></title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -66,6 +80,7 @@
             <span class="topbar-title"><%= title || "Dashboard" %></span>
           </div>
           <div class="topbar-right">
+            <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false">Dark Mode</button>
             <% if (isAuthenticated && currentUser) { %>
               <span class="topbar-user"><%= roleLabel || "User" %>: <%= currentUser.name %></span>
               <a class="topbar-link" href="/logout">Logout</a>

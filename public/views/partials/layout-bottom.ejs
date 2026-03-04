@@ -3,6 +3,33 @@
   </div>
   <script>
     (function () {
+      var themeToggleButtons = Array.prototype.slice.call(
+        document.querySelectorAll("[data-theme-toggle]")
+      );
+      var html = document.documentElement;
+
+      function setTheme(isDarkMode) {
+        html.classList.toggle("dark-mode", isDarkMode);
+        try {
+          localStorage.setItem("theme", isDarkMode ? "dark" : "light");
+        } catch (e) {
+          // Ignore localStorage errors and still toggle in memory.
+        }
+        themeToggleButtons.forEach(function (button) {
+          button.textContent = isDarkMode ? "Light Mode" : "Dark Mode";
+          button.setAttribute("aria-pressed", isDarkMode ? "true" : "false");
+        });
+      }
+
+      if (themeToggleButtons.length) {
+        themeToggleButtons.forEach(function (button) {
+          button.addEventListener("click", function () {
+            setTheme(!html.classList.contains("dark-mode"));
+          });
+        });
+        setTheme(html.classList.contains("dark-mode"));
+      }
+
       var containers = Array.prototype.slice.call(document.querySelectorAll(".table-scroll"));
       if (!containers.length) return;
 
